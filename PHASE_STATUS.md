@@ -4,7 +4,7 @@ Update this file at every phase closeout. Codex self-review/check evidence is ma
 
 | Phase | Scope | Status | External QA reviewer / evidence | External specialist reviewer / evidence | Risks updated | Commit | Push | Remaining/blocker |
 |---|---|---|---|---|---|---|---|---|
-| 0 | Figma baseline, repository inventory, documentation | Checks passed; awaiting routine commit/push | Not required | Not required; Codex Figma baseline self-review PASS (unchanged UI-source hashes + rendered landing smoke) | R-01, R-02, R-35–R-37 | Pending | Not attempted | Close after commit/push truth is recorded |
+| 0 | Figma baseline, repository inventory, documentation | Complete (closed) | Not required | Not required; Codex Figma baseline self-review PASS (unchanged UI-source hashes + rendered landing smoke) | R-01, R-02, R-35–R-37 | `2727a75b96dae8b2fde0dbccae0da774436ac31f` | Pushed | None; stop before Phase 1 |
 | 1 | FastAPI foundation, SQLite, typed contracts, job lifecycle | Not started | Not required | Not required | — | — | — | — |
 | 2 | Sandbox foundation and secure upload intake | Not started | Required | Security reviewer: required | — | — | — | — |
 | 3 | Bandit/Semgrep selected-category pipeline | Not started | Not required | Not required | — | — | — | — |
@@ -62,10 +62,10 @@ External review (required only for phases 2, 4, 5, 6, 7, 9): Not required.
 RISK.md updates: R-01 marked Observed; R-02 retained Open with preservation
 evidence; R-35, R-36, and R-37 added as Observed.
 
-Commit SHA: Pending routine Phase 0 commit.
+Commit SHA: `2727a75b96dae8b2fde0dbccae0da774436ac31f`
 
-Push state: Not attempted; pending final diff check and routine Phase 0 commit.
+Push state: Pushed to `origin/phase-0-baseline-contracts`.
 
-Remaining work/blockers: Record commit/push truth to close Phase 0. Phase 1 is
-not started. Contract/taxonomy and documentation inconsistencies remain tracked
-for their governing phases.
+Remaining work/blockers: None for Phase 0. Phase 1 is not started. Contract,
+taxonomy, and documentation inconsistencies remain tracked for their governing
+phases.
