@@ -5,7 +5,7 @@ Update this file at every phase closeout. Codex self-review/check evidence is ma
 | Phase | Scope | Status | External QA reviewer / evidence | External specialist reviewer / evidence | Risks updated | Commit | Push | Remaining/blocker |
 |---|---|---|---|---|---|---|---|---|
 | 0 | Figma baseline, repository inventory, documentation | Complete (closed) | Not required | Not required; Codex Figma baseline self-review PASS (unchanged UI-source hashes + rendered landing smoke) | R-01, R-02, R-35–R-37 | `2727a75b96dae8b2fde0dbccae0da774436ac31f` | Pushed | None; stop before Phase 1 |
-| 1 | FastAPI foundation, SQLite, typed contracts, job lifecycle | In progress | Not required | Not required; independent Codex API reviewer fixes verified | R-03, R-04, R-28, R-31, R-38-R-39 | — | — | Final QA passed; implementation commit pending |
+| 1 | FastAPI foundation, SQLite, typed contracts, job lifecycle | Complete (closed) | Not required | Not required; independent Codex API reviewer PASS after fixes | R-03, R-04, R-28, R-31, R-38-R-39 | `e2a6a6609b409df06d0c87a6c0005f1bae103900` | Pushed | None; stop before Phase 2 |
 | 2 | Sandbox foundation and secure upload intake | Not started | Required | Security reviewer: required | — | — | — | — |
 | 3 | Bandit/Semgrep selected-category pipeline | Not started | Not required | Not required | — | — | — | — |
 | 4 | 24-task benchmark corpus and protected evaluator | Not started | Required | Reproducibility reviewer: required | — | — | — | — |
@@ -69,3 +69,46 @@ Push state: Pushed to `origin/phase-0-baseline-contracts`.
 Remaining work/blockers: None for Phase 0. Phase 1 is not started. Contract,
 taxonomy, and documentation inconsistencies remain tracked for their governing
 phases.
+
+## Phase 1 closeout - 2026-08-25
+
+Completed scope:
+- Implemented the FastAPI/SQLite foundation, initial Alembic migration, typed
+  request/response contracts, and create/read/start/cancel run lifecycle.
+- Added canonical manifests with exact SHA-256 hashing, normalized selections,
+  reproducibility placeholders, fixed mode labels, and official-ineligible
+  defaults through Phase 4.
+- Added strict HTTP error envelopes, bounded identifiers, allowlisted CORS,
+  a Python 3.14/Windows PEP 751 lock, and local development documentation.
+- Preserved the Figma UI; only an unimported typed frontend API client and
+  compile-time contract checks were added.
+
+Checks run and results:
+- `python -m pytest --cov=app --cov-report=term-missing` - PASS; 16 tests,
+  96% coverage (one upstream Starlette deprecation warning).
+- `python -m compileall -q app migrations tests` - PASS.
+- `pip install --dry-run --ignore-installed -r pylock.toml` - PASS with exact
+  hashes (pip reported PEP 751 support as experimental).
+- `corepack pnpm exec tsc --noEmit` and `corepack pnpm build` - PASS.
+- Real Uvicorn HTTP lifecycle smoke - PASS for health, create, start, cancel,
+  manifest hash, fixed label, and official-ineligible behavior.
+- Core Figma source comparison, secret-pattern scan, and staged diff checks -
+  PASS.
+
+Codex self-review/checks: PASS. An independent API reviewer found boundary,
+locking, manifest, migration, and CORS issues; all important and minor findings
+were corrected and regression-tested. The optional automated security diff
+workbench was blocked by Windows application control before scan creation, as
+recorded in RISK.md.
+
+External review (required only for phases 2, 4, 5, 6, 7, 9): Not required.
+
+RISK.md updates: R-03, R-04, R-28, and R-31 updated with Phase 1 evidence;
+R-38 and R-39 added for the platform-specific lock and blocked security tool.
+
+Implementation commit SHA: `e2a6a6609b409df06d0c87a6c0005f1bae103900`.
+
+Push state: Pushed to `origin/phase-1-backend-foundation`.
+
+Remaining work/blockers: None for Phase 1. Phase 2 is not started and requires
+external Antigravity review before its future commit/push.
