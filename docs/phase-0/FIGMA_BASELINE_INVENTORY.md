@@ -25,6 +25,17 @@ Core baseline hashes:
 | `package.json` | 600 | `c2d99ed2073126d401a3a9b1a2b1691e998058e9fe14da7105857f8a853e38d5` |
 | `pnpm-lock.yaml` | 29455 | `811aecd91f12d4f77c1b88c0ea1edd5127b6bf2150e668e62659cadaac366460` |
 
+## Phase 2 hardened render baseline
+
+Production renders were captured from the Vite production build served at
+`http://127.0.0.1:4173/` with Microsoft Edge `151.0.4129.107` in headless mode.
+The fixed landing-screen viewport was `1440x1080`; both captures used
+`--hide-scrollbars` and a 2,000 ms virtual-time budget.
+
+| Capture | File | SHA-256 |
+|---|---|---|
+| Before canonical taxonomy and local-font changes | `docs/phase-2/figma-hardened-before.png` | `f7374412ce130f5a65fc0dfca627f3f97a4dbeca8cda2e216ef030272062ad73` |
+| After canonical taxonomy and local-font changes | `docs/phase-2/figma-hardened-after.png` | `141bb33be32057c1968adf941e037bdd0a1fc75b3309afbf02ea81c53a5ab524` |
 ## Complete export file list
 
 | Group | Files |

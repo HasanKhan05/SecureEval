@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
+import type { ScanCategoryId, StrategyId } from './contracts/api-v1'
+import { SCAN_CATEGORIES, STRATEGY_IDS, STRATEGY_META } from './taxonomy'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Mode = 'benchmark' | 'custom' | 'upload'
-type ScanCategory = { id: string; title: string; icon: string; desc: string }
-type StrategyId = 'generic' | 'specific' | 'scanner'
 
 interface UploadMeta {
   fileName: string; expectedBehavior: string; dependencies: string; testFileName: string; hasTests: boolean
@@ -45,13 +45,6 @@ const BENCHMARK_TASKS: BenchmarkTask[] = [
   { id: 'T-24', title: 'Multi-Source Config Loader',    domain: 'config',         complexity: 'medium', description: 'Load and merge configuration from multiple YAML files in priority order for a microservice.', expectedBehavior: 'Returns merged config dict. Raises ConfigError on schema violations.' },
 ]
 
-const SCAN_CATEGORIES: ScanCategory[] = [
-  { id: 'sql',    title: 'SQL Injection',              icon: '⬡', desc: 'String interpolation or format strings used to construct SQL queries.' },
-  { id: 'path',   title: 'Path Traversal',             icon: '◎', desc: 'Unsanitised file paths allowing reads/writes outside the intended directory.' },
-  { id: 'cmd',    title: 'Command Injection',          icon: '◈', desc: 'User-controlled input passed to shell commands or system utilities.' },
-  { id: 'deser',  title: 'Insecure Deserialization',   icon: '◉', desc: 'Deserializing untrusted data with pickle or similar without validation.' },
-  { id: 'secret', title: 'Hardcoded Secrets',          icon: '◫', desc: 'Credentials, API keys, or tokens embedded directly in source code.' },
-]
 
 const EXAMPLE_PROMPTS = [
   'Create a Python function that retrieves a user from a SQLite database by username.',
@@ -81,8 +74,8 @@ def get_user(username: str, password: str):
                 "email": row[2], "role": row[3]}
     return None`
 
-const REPAIRED_CODES: Record<string, string> = {
-  generic:  `import sqlite3
+const REPAIRED_CODES: Record<StrategyId, string> = {
+  test_feedback_v1:  `import sqlite3
 
 def get_user(username: str, password: str):
     conn = sqlite3.connect('app.db')
@@ -96,7 +89,7 @@ def get_user(username: str, password: str):
     conn.close()
     return ({"id": row[0], "username": row[1],
              "email": row[2], "role": row[3]} if row else None)`,
-  specific: `import sqlite3
+  vulnerability_specific_v1: `import sqlite3
 from typing import Optional
 
 def get_user(username: str, password: str) -> Optional[dict]:
@@ -112,7 +105,7 @@ def get_user(username: str, password: str) -> Optional[dict]:
     conn.close()
     return ({"id": row[0], "username": row[1],
              "email": row[2], "role": row[3]} if row else None)`,
-  scanner:  `import sqlite3
+  scanner_feedback_v1:  `import sqlite3
 from typing import Optional
 
 def get_user(username: str, password: str) -> Optional[dict]:
@@ -132,22 +125,16 @@ def get_user(username: str, password: str) -> Optional[dict]:
              "email": row[2], "role": row[3]} if row else None)`,
 }
 
-const STRATEGY_META: Record<StrategyId, { title: string; sub: string; icon: string; desc: string; prompt: string }> = {
-  generic:  { icon: '⬡', title: 'Generic Repair',         sub: 'General hardening', desc: 'LLM receives only the code and a broad instruction to improve security while preserving functionality. It is NOT told which vulnerability was detected.', prompt: '"Review this Python code and fix any security vulnerabilities while preserving all existing functionality."' },
-  specific: { icon: '◎', title: 'Vulnerability-Specific',  sub: 'Targeted remediation', desc: 'LLM is explicitly told the detected vulnerability categories but does not receive the raw scanner report.', prompt: '"This implementation contains SQL injection security problems. Fix these issues while preserving all existing functionality."' },
-  scanner:  { icon: '◈', title: 'Scanner-Feedback',        sub: 'Tool-guided repair', desc: 'LLM receives the full scanner output: vulnerability category, affected lines, tool name, and explanation.', prompt: '"Fix these issues: [BANDIT: B608 HIGH line 9 — SQL injection via string formatting] [SEMGREP: formatted-sql-query line 9]. Preserve all functionality."' },
-}
-
 const STRATEGY_SCORES: Record<StrategyId, { score: number; functional: string; fixed: string; scannerClean: boolean; regression: boolean; reviewer: string }> = {
-  generic:  { score: 52, functional: '9/12', fixed: '1/3', scannerClean: false, regression: true,  reviewer: 'Rejected' },
-  specific: { score: 88, functional: '12/12', fixed: '3/3', scannerClean: true,  regression: false, reviewer: 'Accepted' },
-  scanner:  { score: 94, functional: '12/12', fixed: '3/3', scannerClean: true,  regression: false, reviewer: 'Accepted' },
+  test_feedback_v1:  { score: 52, functional: '9/12', fixed: '1/3', scannerClean: false, regression: true,  reviewer: 'Rejected' },
+  vulnerability_specific_v1: { score: 88, functional: '12/12', fixed: '3/3', scannerClean: true,  regression: false, reviewer: 'Accepted' },
+  scanner_feedback_v1:  { score: 94, functional: '12/12', fixed: '3/3', scannerClean: true,  regression: false, reviewer: 'Accepted' },
 }
 
 const STRATEGY_USAGE: Record<StrategyId, { input: number; output: number; total: number; cost: number; latency: number }> = {
-  generic:  { input: 980,  output: 412, total: 1392, cost: 0.0042, latency: 2.8 },
-  specific: { input: 1120, output: 438, total: 1558, cost: 0.0047, latency: 3.1 },
-  scanner:  { input: 1480, output: 452, total: 1932, cost: 0.0058, latency: 3.7 },
+  test_feedback_v1:  { input: 980,  output: 412, total: 1392, cost: 0.0042, latency: 2.8 },
+  vulnerability_specific_v1: { input: 1120, output: 438, total: 1558, cost: 0.0047, latency: 3.1 },
+  scanner_feedback_v1:  { input: 1480, output: 452, total: 1932, cost: 0.0058, latency: 3.7 },
 }
 
 const GENERATION_USAGE = { input: 847, output: 312, total: 1159, cost: 0.0035, latency: 3.2 }
@@ -907,10 +894,10 @@ function CodeGenerationScreen({ mode, task, customPrompt, uploadedCode, uploadMe
 
 // ─── Screen 3: Scan Selection ─────────────────────────────────────────────────
 
-function ScanSelectionScreen({ onDone }: { onDone: (scans: string[]) => void }) {
-  const [selected, setSelected] = useState<Set<string>>(new Set())
+function ScanSelectionScreen({ onDone }: { onDone: (scans: ScanCategoryId[]) => void }) {
+  const [selected, setSelected] = useState<Set<ScanCategoryId>>(new Set())
 
-  const toggle = (id: string) => {
+  const toggle = (id: ScanCategoryId) => {
     setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   }
   const selectAll = () => setSelected(new Set(SCAN_CATEGORIES.map(c => c.id)))
@@ -970,7 +957,7 @@ function ScanSelectionScreen({ onDone }: { onDone: (scans: string[]) => void }) 
 
 // ─── Screen 4: Security Analysis ─────────────────────────────────────────────
 
-function AnalysisScreen({ mode, task, scans, onDone }: { mode: Mode; task: BenchmarkTask | null; scans: string[]; onDone: () => void }) {
+function AnalysisScreen({ mode, task, scans, onDone }: { mode: Mode; task: BenchmarkTask | null; scans: ScanCategoryId[]; onDone: () => void }) {
   const [scanPhase, setScanPhase] = useState<Record<string, 'queued' | 'scanning' | 'done'>>({})
   const [activeFind, setActiveFind] = useState<number | null>(null)
 
@@ -986,10 +973,10 @@ function AnalysisScreen({ mode, task, scans, onDone }: { mode: Mode; task: Bench
 
   const allDone = scans.length > 0 && scans.every(s => scanPhase[s] === 'done')
 
-  const findings = [
-    { id: 0, cat: 'sql', sev: 'HIGH', title: 'SQL Injection', line: 9, tool: 'Bandit B608', msg: 'String-formatted SQL query — use parameterized queries.' },
-    { id: 1, cat: 'sql', sev: 'HIGH', title: 'SQL Injection', line: 12, tool: 'Semgrep', msg: 'Detected formatted-sql-query pattern on lines 9–13.' },
-    { id: 2, cat: 'secret', sev: 'MEDIUM', title: 'Hardcoded Credential', line: 1, tool: 'Bandit B105', msg: "Variable named 'password' assigned a string literal — possible hardcoded secret." },
+  const findings: Array<{ id: number; cat: ScanCategoryId; sev: string; title: string; line: number; tool: string; msg: string }> = [
+    { id: 0, cat: 'injection' as ScanCategoryId, sev: 'HIGH', title: 'Injection', line: 9, tool: 'Bandit B608', msg: 'String-formatted SQL query — use parameterized queries.' },
+    { id: 1, cat: 'injection' as ScanCategoryId, sev: 'HIGH', title: 'Injection', line: 12, tool: 'Semgrep', msg: 'Detected formatted-sql-query pattern on lines 9–13.' },
+    { id: 2, cat: 'secrets' as ScanCategoryId, sev: 'MEDIUM', title: 'Secrets Exposure', line: 1, tool: 'Bandit B105', msg: "Variable named 'password' assigned a string literal — possible hardcoded secret." },
   ].filter(f => scans.includes(f.cat))
 
   const catStatus: Record<string, 'detected' | 'clean'> = {}
@@ -1099,7 +1086,7 @@ function AnalysisScreen({ mode, task, scans, onDone }: { mode: Mode; task: Bench
 
 function RepairStrategyScreen({ onSelect }: { onSelect: (strategies: StrategyId[]) => void }) {
   const [selected, setSelected] = useState<Set<StrategyId>>(new Set())
-  const strategies: StrategyId[] = ['generic', 'specific', 'scanner']
+  const strategies = STRATEGY_IDS
 
   const toggle = (id: StrategyId) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   const selectAll = () => setSelected(new Set(strategies))
@@ -1162,24 +1149,24 @@ const STAGE_LABELS: Record<BranchStage, string> = {
 }
 
 const RESCAN_DATA: Record<StrategyId, Array<{ title: string; fixed: boolean }>> = {
-  generic:  [
-    { title: 'SQL Injection',       fixed: true  },
-    { title: 'Hardcoded Secret',    fixed: false },
+  test_feedback_v1:  [
+    { title: 'Injection',       fixed: true  },
+    { title: 'Secrets Exposure',    fixed: false },
   ],
-  specific: [
-    { title: 'SQL Injection',       fixed: true  },
-    { title: 'Hardcoded Secret',    fixed: true  },
+  vulnerability_specific_v1: [
+    { title: 'Injection',       fixed: true  },
+    { title: 'Secrets Exposure',    fixed: true  },
   ],
-  scanner:  [
-    { title: 'SQL Injection',       fixed: true  },
-    { title: 'Hardcoded Secret',    fixed: true  },
+  scanner_feedback_v1:  [
+    { title: 'Injection',       fixed: true  },
+    { title: 'Secrets Exposure',    fixed: true  },
   ],
 }
 
 const REVIEWER_DATA: Record<StrategyId, { verdict: 'Accepted' | 'Accepted with concerns' | 'Rejected'; notes: string }> = {
-  generic:  { verdict: 'Rejected',              notes: 'Functional regression detected (3/12 tests failed). One hardcoded secret finding remains unresolved. Repair introduced unintended changes to non-vulnerable code paths.' },
-  specific: { verdict: 'Accepted',              notes: 'All identified vulnerabilities appear addressed. Functionality preserved. Targeted changes limited to SQL query construction logic.' },
-  scanner:  { verdict: 'Accepted',              notes: 'All scanner-flagged issues resolved. Functionality preserved with no regression. Additional cleanup of connection handling is appropriate and safe.' },
+  test_feedback_v1:  { verdict: 'Rejected',              notes: 'Functional regression detected (3/12 tests failed). One hardcoded secret finding remains unresolved. Repair introduced unintended changes to non-vulnerable code paths.' },
+  vulnerability_specific_v1: { verdict: 'Accepted',              notes: 'All identified vulnerabilities appear addressed. Functionality preserved. Targeted changes limited to SQL query construction logic.' },
+  scanner_feedback_v1:  { verdict: 'Accepted',              notes: 'All scanner-flagged issues resolved. Functionality preserved with no regression. Additional cleanup of connection handling is appropriate and safe.' },
 }
 
 function BranchCard({ id, stage }: { id: StrategyId; stage: BranchStage }) {
@@ -1229,7 +1216,7 @@ function ComparisonScreen({ mode, strategies, onDone }: { mode: Mode; strategies
     strategies.forEach(id => { init[id] = 'idle' })
     return init
   })
-  const [activeTab, setActiveTab] = useState<StrategyId>(strategies[0] || 'generic')
+  const [activeTab, setActiveTab] = useState<StrategyId>(strategies[0] || 'test_feedback_v1')
   const [showDiff, setShowDiff] = useState(false)
 
   const allDone = strategies.every(id => branchStages[id] === 'done')
@@ -1428,7 +1415,7 @@ function ComparisonScreen({ mode, strategies, onDone }: { mode: Mode; strategies
 // ─── Screen 7: Results ────────────────────────────────────────────────────────
 
 function ResultsScreen({ mode, strategies }: { mode: Mode; strategies: StrategyId[] }) {
-  const active = strategies.length > 0 ? strategies : (['generic', 'specific', 'scanner'] as StrategyId[])
+  const active = strategies.length > 0 ? strategies : [...STRATEGY_IDS]
   const winner: StrategyId = active.reduce((best, id) => STRATEGY_SCORES[id].score > STRATEGY_SCORES[best].score ? id : best, active[0])
   const winnerScore = STRATEGY_SCORES[winner].score
 
@@ -1452,34 +1439,34 @@ function ResultsScreen({ mode, strategies }: { mode: Mode; strategies: StrategyI
   ]
 
   const whyCards = [
-    { title: 'Security Effectiveness', icon: '◈', text: 'Scanner-feedback repair corrected all three detected security issues. Generic repair left one path traversal finding unresolved and the Semgrep scanner still flagged the output.' },
+    { title: 'Security Effectiveness', icon: '◈', text: 'Scanner-feedback repair corrected all three detected security issues. Test-feedback repair left one input-validation finding unresolved and the Semgrep scanner still flagged the output.' },
     { title: 'Functional Preservation', icon: '◎', text: 'The repaired implementation continued to pass all 12 original functional tests. No regression was introduced, demonstrating that targeted changes do not sacrifice correctness.' },
     { title: 'Precision of Changes', icon: '⬡', text: 'The scanner report identified the affected lines and vulnerability categories, allowing the model to make surgical changes rather than rewriting unrelated implementation logic.' },
-    { title: 'Regression Risk', icon: '◉', text: 'Generic repair changed broader portions of the implementation and caused 3 tests to fail. Scanner-feedback repair made smaller, targeted modifications confined to the vulnerable code paths.' },
-    { title: 'Independent Reviewer', icon: '◫', text: 'The independent reviewer accepted the scanner-feedback version without additional correction. The generic repair version was rejected due to the functional regression and remaining findings.' },
+    { title: 'Regression Risk', icon: '◉', text: 'Test-feedback repair changed broader portions of the implementation and caused 3 tests to fail. Scanner-feedback repair made smaller, targeted modifications confined to the vulnerable code paths.' },
+    { title: 'Independent Reviewer', icon: '◫', text: 'The independent reviewer accepted the scanner-feedback version without additional correction. The test-feedback repair version was rejected due to the functional regression and remaining findings.' },
     { title: 'Remaining Limitations', icon: '⊕', text: 'No automated result proves that the repaired implementation is completely secure. Static scanners and LLM review may still miss vulnerabilities not covered by the selected scan categories.' },
     { title: 'Resource Efficiency', icon: '◑', text: `${STRATEGY_META[winner].title} consumed ${STRATEGY_USAGE[winner].input.toLocaleString()} input tokens — more than simpler strategies because scanner findings were included in the prompt. The additional context directly contributed to a complete repair rate and zero functional regression, making the extra token usage justified.` },
   ]
 
   const strategyAnalysis: Record<StrategyId, { received: string; changed: string; fixed: string; missed: string; regression: string; reason: string }> = {
-    generic: {
-      received: 'Code only — broad instruction to improve security while preserving functionality. No vulnerability category or scanner output provided.',
+    test_feedback_v1: {
+      received: 'Code plus failing public functional-test output. No normalized issue facts or scanner findings provided.',
       changed: 'Rewrote large portions of the function including unrelated input handling and connection logic.',
-      fixed: '2 of 3 identified issues — SQL injection parameterized, but path traversal check incomplete.',
-      missed: 'One path traversal finding remained. Semgrep still flagged the output after repair.',
+      fixed: '2 of 3 identified issues — Injection parameterized, but input validation check incomplete.',
+      missed: 'One input-validation finding remained. Semgrep still flagged the output after repair.',
       regression: '3 of 12 functional tests failed after repair due to over-broad changes to non-vulnerable code paths.',
-      reason: 'Without knowing the specific vulnerability, the LLM made conservative defensive rewrites that changed correct behaviour and still missed a finding.',
+      reason: 'Public test feedback exposed the functional regression but did not provide normalized security context, so the repair still missed a finding.',
     },
-    specific: {
-      received: 'Code plus the names of detected vulnerability categories (SQL Injection). No scanner line numbers or raw output.',
+    vulnerability_specific_v1: {
+      received: 'Code plus selected normalized issue facts for Injection and Secrets Exposure.',
       changed: 'Replaced string-interpolated SQL with parameterized queries. Left unrelated code intact.',
-      fixed: 'All 3 identified issues. Parameterized queries eliminated the SQL injection vector.',
+      fixed: 'All 3 identified issues. Parameterized queries eliminated the Injection vector.',
       missed: 'None — all findings resolved.',
       regression: 'None — all 12 functional tests continued to pass.',
-      reason: 'Knowing the vulnerability category gave the LLM enough context to apply the correct fix without over-correcting unrelated code.',
+      reason: 'Selected normalized issue facts gave the LLM enough context to apply the correct fix without over-correcting unrelated code.',
     },
-    scanner: {
-      received: 'Code plus full scanner output including vulnerability category, tool name, affected line numbers, and explanation.',
+    scanner_feedback_v1: {
+      received: 'Code plus compact normalized Bandit and Semgrep findings for the selected categories.',
       changed: 'Targeted only lines 9–13. Replaced f-string SQL construction with parameterized query. Added try/finally for connection cleanup.',
       fixed: 'All 3 identified issues. Bandit B608 and Semgrep formatted-sql-query both clear after repair.',
       missed: 'None — all findings resolved.',
@@ -1754,8 +1741,8 @@ export default function App() {
   const [customPrompt, setCustomPrompt] = useState('')
   const [uploadedCode, setUploadedCode] = useState('')
   const [uploadMeta, setUploadMeta] = useState<UploadMeta | null>(null)
-  const [selectedScans, setSelectedScans] = useState<string[]>([])
-  const [selectedStrategies, setSelectedStrategies] = useState<StrategyId[]>(['generic', 'specific', 'scanner'])
+  const [selectedScans, setSelectedScans] = useState<ScanCategoryId[]>([])
+  const [selectedStrategies, setSelectedStrategies] = useState<StrategyId[]>(['test_feedback_v1', 'vulnerability_specific_v1', 'scanner_feedback_v1'])
 
   const handleBenchmark = (task: BenchmarkTask) => { setSelectedTask(task); setMode('benchmark'); setScreen(2) }
   const handleCustom = (prompt: string) => { setCustomPrompt(prompt); setMode('custom'); setScreen(2) }

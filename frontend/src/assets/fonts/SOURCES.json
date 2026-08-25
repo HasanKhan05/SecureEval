@@ -1,0 +1,34 @@
+{
+  "source_repository": "https://github.com/google/fonts",
+  "commit": "ec626514f79f831f1ab848a82114a0ce7e2d6372",
+  "license": "SIL Open Font License 1.1",
+  "fonts": [
+    {
+      "family": "Inter",
+      "source_path": "ofl/inter/Inter[opsz,wght].ttf",
+      "local_path": "inter/Inter.ttf",
+      "sha256": "29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031",
+      "license_path": "inter/OFL.txt",
+      "license_sha256": "5b9321a4298cfeb6b34354164a1c3afc3db114569984c502b9b35d988fd58c57",
+      "weight_range": "300 700"
+    },
+    {
+      "family": "Roboto Condensed",
+      "source_path": "ofl/robotocondensed/RobotoCondensed[wght].ttf",
+      "local_path": "roboto-condensed/RobotoCondensed.ttf",
+      "sha256": "dace262afcee68a5276f200d8026c57221735c0118ab5fda8c2c0d3dc409a8d0",
+      "license_path": "roboto-condensed/OFL.txt",
+      "license_sha256": "0e4cc6ece88573545be2ed25835363662a6182ba4a4c1b5c8feda52add30e8a6",
+      "weight_range": "300 800"
+    },
+    {
+      "family": "JetBrains Mono",
+      "source_path": "ofl/jetbrainsmono/JetBrainsMono[wght].ttf",
+      "local_path": "jetbrains-mono/JetBrainsMono.ttf",
+      "sha256": "48715a42ec242c21e9f02692891e147d022299a52e48d5e413e1a942193ffeda",
+      "license_path": "jetbrains-mono/OFL.txt",
+      "license_sha256": "b2fe5e8987594e9ffd1d2ca52a2f5d73eb8335243893c5d6254b5ad69269591d",
+      "weight_range": "400 600"
+    }
+  ]
+}

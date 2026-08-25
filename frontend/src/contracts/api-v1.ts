@@ -1,6 +1,6 @@
 /**
  * Phase 1 public API boundary described by API_SPEC.md.
- * It remains deliberately unimported by the preserved Figma UI until Phase 7.
+ * The Phase 0 taxonomy imports its identifier types; API client calls remain deferred until Phase 7.
  * These public shapes match the authoritative Pydantic models.
  */
 
@@ -38,6 +38,21 @@ export type StrategyId =
   | "vulnerability_specific_v1"
   | "scanner_feedback_v1"
   | "test_feedback_v1";
+
+export interface ScanCategoryDefinition {
+  id: ScanCategoryId;
+  title: string;
+  icon: string;
+  desc: string;
+}
+
+export interface StrategyMetaDefinition {
+  title: string;
+  sub: string;
+  icon: string;
+  desc: string;
+  prompt: string;
+}
 
 export interface HealthResponse {
   schema_version: "1.0";
