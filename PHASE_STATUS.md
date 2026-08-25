@@ -5,7 +5,7 @@ Update this file at every phase closeout. Codex self-review/check evidence is ma
 | Phase | Scope | Status | External QA reviewer / evidence | External specialist reviewer / evidence | Risks updated | Commit | Push | Remaining/blocker |
 |---|---|---|---|---|---|---|---|---|
 | 0 | Figma baseline, repository inventory, documentation | Complete (closed) | Not required | Not required; Codex Figma baseline self-review PASS (unchanged UI-source hashes + rendered landing smoke) | R-01, R-02, R-35–R-37 | `2727a75b96dae8b2fde0dbccae0da774436ac31f` | Pushed | None; stop before Phase 1 |
-| 1 | FastAPI foundation, SQLite, typed contracts, job lifecycle | Not started | Not required | Not required | — | — | — | — |
+| 1 | FastAPI foundation, SQLite, typed contracts, job lifecycle | In progress | Not required | Not required; independent Codex API reviewer fixes verified | R-03, R-04, R-28, R-31, R-38-R-39 | — | — | Final QA passed; implementation commit pending |
 | 2 | Sandbox foundation and secure upload intake | Not started | Required | Security reviewer: required | — | — | — | — |
 | 3 | Bandit/Semgrep selected-category pipeline | Not started | Not required | Not required | — | — | — | — |
 | 4 | 24-task benchmark corpus and protected evaluator | Not started | Required | Reproducibility reviewer: required | — | — | — | — |

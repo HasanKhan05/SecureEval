@@ -1,7 +1,7 @@
-# Local development baseline
+# Local development
 
-Phase 0 establishes the repository layout and verifies the supplied frontend.
-The backend is documentation-only until Phase 1.
+Phase 0 preserved the supplied frontend. Phase 1 adds the versioned FastAPI
+boundary while leaving the Figma runtime UI source unchanged.
 
 ## Layout
 
@@ -20,8 +20,8 @@ govern SecureEval work.
 
 - Node.js 22 (the Figma export's `.mise.toml` pin)
 - pnpm 10.34.3 for the supplied lockfile, or Corepack-compatible pnpm
-- Python and Docker are not used by Phase 0; Phase 1 will pin and document the
-  backend runtime before backend code is introduced
+- Python 3.14 for the committed platform-specific `backend/pylock.toml`
+- Docker is introduced in Phase 2, not required for the Phase 1 lifecycle API
 
 ## Frontend
 
@@ -36,15 +36,25 @@ The development server defaults to `http://localhost:8443` in the Figma
 configuration. The production build is emitted to `frontend/dist/` and is
 ignored by Git.
 
-Copy `frontend/.env.example` to a local `.env` only when API integration begins.
-Only browser-safe values may use the `VITE_` prefix.
+Copy `frontend/.env.example` to `frontend/.env` for local API use. The base
+URL is the server origin; the typed client appends `/api/v1`.
 
-## Backend placeholder
+## Backend
 
-`backend/.env.example` contains names and non-secret development defaults only.
-Do not commit a populated `.env`, provider credential, upload, SQLite database,
-artifact, hidden benchmark asset, or raw model response.
+```powershell
+cd backend
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r pylock.toml
+.\.venv\Scripts\python.exe -m pip install --no-deps --no-build-isolation -e .
+.\.venv\Scripts\python.exe -m pytest
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
+```
 
-Phase 1 owns the backend package definition, dependency lock, FastAPI start
-command, Pydantic contracts, and test command. Phase 0 does not pre-empt those
-implementation choices.
+The PEP 751 lock contains hashes for the full Python 3.14/Windows dependency
+graph. The application applies Alembic migrations at startup and stores local
+SQLite data under `backend/data/`, which is ignored.
+
+`backend/.env.example` contains non-secret defaults. Its CORS allowlist is
+limited to the actual Figma development origins on port 8443. Do not commit a
+populated `.env`, credential, upload, SQLite database, artifact, hidden
+benchmark asset, or raw model response.

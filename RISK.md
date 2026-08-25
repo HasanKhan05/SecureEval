@@ -42,6 +42,8 @@
 | R-36 | 0–9 | Governing documents disagree on security filename and final phase number | Process drift or skipped/misapplied gate | M | Observed | `MASTER_CODEX_PROMPT.md` names `SECURITY.md`; package has `SECURITY_DESIGN.md`; `TESTING_AND_QA.md` and risk rows mention Phase 10 while plan/status end at Phase 9 | Future risk-mitigation agent |
 | R-37 | 0–8 | Verification runs with tool versions different from the Figma `.mise.toml` pins | Build/replay drift between environments | M | Observed | Phase 0 used Node 24.11.0 and pnpm 11.23.0; export declares Node 22 and pnpm 10.34.3 | Future risk-mitigation agent |
 
+| R-38 | 1-9 | Platform-specific backend lock is reused on an incompatible runtime | Non-reproducible or failed install | M | Observed | PEP 751 lock is Python 3.14/Windows-specific | Future risk-mitigation agent |
+| R-39 | 1 | Automated security diff workbench is blocked by host application control | Reduced automated security review evidence | L | Blocked | Bundled _sqlite3 DLL blocked before scan creation | Future risk-mitigation agent |
 ## Update rule
 
 For each phase, append a dated note beneath the table: changed IDs, observed evidence, status (`Open`, `Observed`, `Accepted`, `Mitigated`, `Blocked`), and any newly discovered risk. Do not delete historical entries.
@@ -64,3 +66,24 @@ For each phase, append a dated note beneath the table: changed IDs, observed evi
 - **R-37 — Observed (new):** frozen-lockfile verification succeeded with the
   locally available Node 24.11.0/pnpm 11.23.0 rather than the export's declared
   Node 22/pnpm 10.34.3 toolchain.
+
+## 2026-08-25 - Phase 1
+
+- **R-03 - Observed:** strict Pydantic creation models reject client-owned status,
+  metrics, and eligibility fields; the typed client consumes server status. Risk
+  remains open until the preserved UI is wired in Phase 7.
+- **R-04 - Open:** SQLite persistence and queued/running/cancelled transitions
+  are integration-tested, but concurrent conditional updates and worker crash
+  recovery remain later-phase work.
+- **R-28 - Open:** Phase 1 is a local-first API with narrow CORS origins but no
+  authentication. It must remain locally bound until authorization is added
+  before any multi-user or remote deployment.
+- **R-31 - Observed:** the backend now has a complete hashed PEP 751 lock and the
+  existing frontend lock remains frozen; container digest review remains later.
+- **R-38 - Observed (new):** `backend/pylock.toml` is intentionally scoped to
+  Python 3.14 on Windows. Another runtime/platform requires a separately
+  reviewed regenerated lock rather than silent dependency resolution.
+- **R-39 - Blocked (new tooling evidence):** the optional Codex Security diff
+  workbench could not start because Windows Application Control blocked its
+  bundled `_sqlite3` DLL. Phase 1 used an independent API reviewer plus direct
+  security/contract tests; the required external security gate begins at Phase 2.

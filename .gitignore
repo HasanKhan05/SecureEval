@@ -11,8 +11,12 @@ __pycache__/
 .pytest_cache/
 .venv/
 *.py[cod]
+.coverage*
+htmlcov/
 
 # Local data and generated artifacts
 artifacts/
 data/*.db
 data/*.sqlite*
+backend/data/
+.pytest_tmp/

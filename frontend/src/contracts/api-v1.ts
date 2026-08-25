@@ -1,10 +1,15 @@
 /**
- * Phase 0 draft of the public API boundary described by API_SPEC.md.
- * It is deliberately not imported by the preserved Figma UI yet.
- * Phase 1 will pair these public shapes with authoritative Pydantic models.
+ * Phase 1 public API boundary described by API_SPEC.md.
+ * It remains deliberately unimported by the preserved Figma UI until Phase 7.
+ * These public shapes match the authoritative Pydantic models.
  */
 
 export type Mode = "benchmark" | "custom_prompt" | "upload";
+export type ModeLabel =
+  | "Benchmark"
+  | "Exploratory \u2014 Custom Prompt"
+  | "Exploratory \u2014 Uploaded Code";
+
 
 export type JobStatus =
   | "queued"
@@ -33,6 +38,12 @@ export type StrategyId =
   | "vulnerability_specific_v1"
   | "scanner_feedback_v1"
   | "test_feedback_v1";
+
+export interface HealthResponse {
+  schema_version: "1.0";
+  status: "ok";
+  service: "secureeval-api";
+}
 
 export interface ErrorEnvelope {
   error: {
@@ -81,21 +92,22 @@ export interface AttemptSummary {
   attempt_id: string;
   strategy_id: StrategyId;
   status: JobStatus;
-  failure_code?: FailureCode;
+  failure_code: FailureCode | string | null;
 }
 
 export interface Run {
   schema_version: "1.0";
   run_id: string;
   mode: Mode;
+  mode_label: ModeLabel;
   official_eligible: boolean;
   status: JobStatus;
   attempt_summaries: AttemptSummary[];
   manifest_hash: string;
   created_at: string;
   updated_at: string;
-  failure_code?: FailureCode;
-  failure_message?: string;
+  failure_code: FailureCode | string | null;
+  failure_message: string | null;
 }
 
 export interface FindingSummary {
