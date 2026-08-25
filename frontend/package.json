@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
+    "verify:figma-baseline": "node scripts/verify-figma-baseline.mjs",
     "preview": "vite preview",
     "format": "oxfmt"
   },

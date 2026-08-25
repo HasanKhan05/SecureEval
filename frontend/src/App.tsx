@@ -5,6 +5,10 @@ import { SCAN_CATEGORIES, STRATEGY_IDS, STRATEGY_META } from './taxonomy'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Mode = 'benchmark' | 'custom' | 'upload'
+type FindingFixture = {
+  id: number; cat: ScanCategoryId; sev: string; title: string
+  line: number; tool: string; msg: string
+}
 
 interface UploadMeta {
   fileName: string; expectedBehavior: string; dependencies: string; testFileName: string; hasTests: boolean
@@ -973,11 +977,11 @@ function AnalysisScreen({ mode, task, scans, onDone }: { mode: Mode; task: Bench
 
   const allDone = scans.length > 0 && scans.every(s => scanPhase[s] === 'done')
 
-  const findings: Array<{ id: number; cat: ScanCategoryId; sev: string; title: string; line: number; tool: string; msg: string }> = [
-    { id: 0, cat: 'injection' as ScanCategoryId, sev: 'HIGH', title: 'Injection', line: 9, tool: 'Bandit B608', msg: 'String-formatted SQL query — use parameterized queries.' },
-    { id: 1, cat: 'injection' as ScanCategoryId, sev: 'HIGH', title: 'Injection', line: 12, tool: 'Semgrep', msg: 'Detected formatted-sql-query pattern on lines 9–13.' },
-    { id: 2, cat: 'secrets' as ScanCategoryId, sev: 'MEDIUM', title: 'Secrets Exposure', line: 1, tool: 'Bandit B105', msg: "Variable named 'password' assigned a string literal — possible hardcoded secret." },
-  ].filter(f => scans.includes(f.cat))
+  const findings = ([
+    { id: 0, cat: 'injection', sev: 'HIGH', title: 'Injection', line: 9, tool: 'Bandit B608', msg: 'String-formatted SQL query — use parameterized queries.' },
+    { id: 1, cat: 'injection', sev: 'HIGH', title: 'Injection', line: 12, tool: 'Semgrep', msg: 'Detected formatted-sql-query pattern on lines 9–13.' },
+    { id: 2, cat: 'secrets', sev: 'MEDIUM', title: 'Secrets Exposure', line: 1, tool: 'Bandit B105', msg: "Variable named 'password' assigned a string literal — possible hardcoded secret." },
+  ] satisfies readonly FindingFixture[]).filter(f => scans.includes(f.cat))
 
   const catStatus: Record<string, 'detected' | 'clean'> = {}
   scans.forEach(s => { catStatus[s] = findings.some(f => f.cat === s) ? 'detected' : 'clean' })

@@ -27,15 +27,26 @@ Core baseline hashes:
 
 ## Phase 2 hardened render baseline
 
-Production renders were captured from the Vite production build served at
-`http://127.0.0.1:4173/` with Microsoft Edge `151.0.4129.107` in headless mode.
-The fixed landing-screen viewport was `1440x1080`; both captures used
-`--hide-scrollbars` and a 2,000 ms virtual-time budget.
+Production renders were captured with Microsoft Edge `151.0.4129.107` in
+headless mode at the fixed landing-screen viewport `1440x1080`. For each
+capture, the relevant production `dist/` directory was copied to a temporary,
+non-repository local server root. A capture-only `<style>` was injected into
+that temporary `index.html` to set `animation` and `transition` to `none`; no
+application source or shipped CSS was changed. The pre-change root was built
+from `3714216a6b029bf471949aeabfd95b609ced8c02`; the post-change root was
+built from this worktree.
+
+Each root was served locally on `127.0.0.1`, then Edge used `--headless=new`,
+`--no-first-run`, `--disable-extensions`, `--disable-gpu`, `--hide-scrollbars`,
+an isolated `--user-data-dir`, `--virtual-time-budget=2000`, and
+`--window-size=1440,1080`. A capture was accepted only after four consecutive
+500 ms SHA-256 reads matched, and a second isolated capture produced the same
+hash. This freezes evidence timing without removing application animations.
 
 | Capture | File | SHA-256 |
 |---|---|---|
-| Before canonical taxonomy and local-font changes | `docs/phase-2/figma-hardened-before.png` | `f7374412ce130f5a65fc0dfca627f3f97a4dbeca8cda2e216ef030272062ad73` |
-| After canonical taxonomy and local-font changes | `docs/phase-2/figma-hardened-after.png` | `141bb33be32057c1968adf941e037bdd0a1fc75b3309afbf02ea81c53a5ab524` |
+| Before canonical taxonomy and local-font changes | `docs/phase-2/figma-hardened-before.png` | `d7e81ea6e068890ac956ff8fa7ab8ae943c09eb3931fe0055fc32ad689bca259` |
+| After canonical taxonomy and local-font changes | `docs/phase-2/figma-hardened-after.png` | `d7e81ea6e068890ac956ff8fa7ab8ae943c09eb3931fe0055fc32ad689bca259` |
 ## Complete export file list
 
 | Group | Files |
