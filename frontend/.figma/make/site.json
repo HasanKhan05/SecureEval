@@ -1,0 +1,10 @@
+{
+  "description": "This web application streamlines project management by providing users with step-by-step guides and templates, enhancing productivity and collaboration.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

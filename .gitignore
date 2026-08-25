@@ -1,0 +1,18 @@
+.worktrees/
+
+# Local environments and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Python
+__pycache__/
+.pytest_cache/
+.venv/
+*.py[cod]
+
+# Local data and generated artifacts
+artifacts/
+data/*.db
+data/*.sqlite*
