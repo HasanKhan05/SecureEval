@@ -6,8 +6,9 @@ from pathlib import Path
 
 from app.enums import StrategyId
 from app.schemas import RunCreate
+from app.sandbox.policy import PINNED_IMAGE, POLICY_ID
 
-CONFIGURATION_ID = "phase-1-foundation-v1"
+CONFIGURATION_ID = "phase-2-sandbox-uploads-v1"
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = BACKEND_ROOT.parent
 
@@ -22,6 +23,7 @@ def canonical_manifest(
     *,
     run_id: str,
     created_at: str,
+    source_artifact: dict[str, object] | None = None,
 ) -> str:
     manifest = {
         "schema_version": "1.0",
@@ -33,6 +35,7 @@ def canonical_manifest(
         "upload_id": payload.upload_id,
         "custom_prompt": payload.custom_prompt,
         "official_eligible": False,
+        "source_artifact": source_artifact,
         "source_revision": os.getenv(
             "SECUREEVAL_SOURCE_REVISION", "unavailable_local_checkout"
         ),
@@ -67,7 +70,7 @@ def canonical_manifest(
             "system": platform.system(),
         },
         "phase_boundaries": {
-            "sandbox": "unavailable_until_phase_2",
+            "sandbox": {"policy_id": POLICY_ID, "image_digest": PINNED_IMAGE},
             "scanner": "unavailable_until_phase_3",
             "benchmark": "unavailable_until_phase_4",
             "metrics": "unavailable_until_phase_5",

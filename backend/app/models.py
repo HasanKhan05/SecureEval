@@ -44,3 +44,31 @@ class StrategyAttemptRecord(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     failure_code: Mapped[str | None] = mapped_column(String(64))
     run: Mapped[RunRecord] = relationship(back_populates="attempts")
+
+class UploadArtifactRecord(Base):
+    __tablename__ = "upload_artifacts"
+
+    upload_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    purpose: Mapped[str] = mapped_column(String(32), nullable=False)
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+    storage_key: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    content_hash: Mapped[str] = mapped_column(String(80), nullable=False)
+    file_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    total_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    retention_class: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[str] = mapped_column(String(32), nullable=False)
+    expires_at: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    bound_run_id: Mapped[str | None] = mapped_column(
+        ForeignKey("runs.run_id"), index=True
+    )
+    deleted_at: Mapped[str | None] = mapped_column(String(32))
+
+
+class AuditEventRecord(Base):
+    __tablename__ = "audit_events"
+
+    event_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    subject_id: Mapped[str | None] = mapped_column(String(64))
+    reason_code: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[str] = mapped_column(String(32), nullable=False)

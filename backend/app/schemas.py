@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.enums import JobStatus, Mode, ModeLabel, ScanCategoryId, StrategyId
+from app.uploads.policy import UploadPurpose
 
 
 class StrictModel(BaseModel):
@@ -29,18 +30,21 @@ class RunCreate(StrictModel):
         elif len(set(self.strategies)) != len(self.strategies):
             raise ValueError("strategies must be unique")
 
-        supplied = {
-            "task_id": self.task_id is not None,
-            "upload_id": self.upload_id is not None,
-            "custom_prompt": self.custom_prompt is not None,
-        }
-        requirements = {
-            Mode.BENCHMARK: "task_id",
-            Mode.CUSTOM_PROMPT: "custom_prompt",
-            Mode.UPLOAD: "upload_id",
-        }
-        required = requirements[self.mode]
-        if not supplied[required] or any(value for key, value in supplied.items() if key != required):
+        if self.mode == Mode.BENCHMARK:
+            valid = (
+                self.task_id is not None
+                and self.upload_id is None
+                and self.custom_prompt is None
+            )
+        elif self.mode == Mode.CUSTOM_PROMPT:
+            valid = self.task_id is None and self.custom_prompt is not None
+        else:
+            valid = (
+                self.task_id is None
+                and self.upload_id is not None
+                and self.custom_prompt is None
+            )
+        if not valid:
             raise ValueError("input fields do not match the selected mode")
         return self
 
@@ -71,3 +75,14 @@ class HealthResponse(BaseModel):
     schema_version: Literal["1.0"] = "1.0"
     status: Literal["ok"] = "ok"
     service: Literal["secureeval-api"] = "secureeval-api"
+
+class UploadReceipt(BaseModel):
+    schema_version: Literal["1.0"] = "1.0"
+    upload_id: str
+    purpose: UploadPurpose
+    file_count: int
+    total_bytes: int
+    content_hash: str
+    retention_class: Literal["exploratory_24h"] = "exploratory_24h"
+    created_at: datetime
+    expires_at: datetime

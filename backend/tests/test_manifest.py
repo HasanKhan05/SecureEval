@@ -33,4 +33,7 @@ def test_creation_persists_exact_canonical_manifest_bytes(
     assert manifest["scan_policy"]["categories"] == ["injection", "secrets"]
     assert manifest["package_locks"]["backend"]["path"] == "backend/pylock.toml"
     assert manifest["package_locks"]["backend"]["sha256"].startswith("sha256:")
-    assert manifest["phase_boundaries"]["sandbox"] == "unavailable_until_phase_2"
+    assert manifest["phase_boundaries"]["sandbox"] == {
+        "image_digest": "python@sha256:31da4cb527055e4e3d7e9e006dffe9329f84ebea79eaca0a1f1c27ce61e40ca5",
+        "policy_id": "sandbox-policy-v1",
+    }

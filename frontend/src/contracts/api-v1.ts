@@ -70,13 +70,18 @@ export interface TaskCatalog {
   tasks: TaskCatalogItem[];
 }
 
+export type UploadPurpose = "custom_prompt_context" | "uploaded_code";
+
 export interface UploadReceipt {
   schema_version: "1.0";
   upload_id: string;
-  file_name: string;
-  accepted_file_count: number;
+  purpose: UploadPurpose;
+  file_count: number;
+  total_bytes: number;
   content_hash: string;
-  status: "accepted";
+  retention_class: "exploratory_24h";
+  created_at: string;
+  expires_at: string;
 }
 
 export interface RunCreate {

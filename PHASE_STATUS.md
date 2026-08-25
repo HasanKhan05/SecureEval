@@ -6,7 +6,7 @@ Update this file at every phase closeout. Codex self-review/check evidence is ma
 |---|---|---|---|---|---|---|---|---|
 | 0 | Figma baseline, repository inventory, documentation | Complete (closed) | Not required | Not required; Codex Figma baseline self-review PASS (unchanged UI-source hashes + rendered landing smoke) | R-01, R-02, R-35–R-37 | `2727a75b96dae8b2fde0dbccae0da774436ac31f` | Pushed | None; stop before Phase 1 |
 | 1 | FastAPI foundation, SQLite, typed contracts, job lifecycle | Complete (closed) | Not required | Not required; independent Codex API reviewer PASS after fixes | R-03, R-04, R-28, R-31, R-38-R-39 | `e2a6a6609b409df06d0c87a6c0005f1bae103900` | Pushed | None; stop before Phase 2 |
-| 2 | Sandbox foundation and secure upload intake | Not started | Required | Security reviewer: required | — | — | — | — |
+| 2 | Sandbox foundation and secure upload intake | Self-review complete; integration pending | External gate explicitly waived by user for Phase 2 on 2026-08-25 | Codex self-review PASS; Codex Security diff scan PASS/no findings | R-05-R-09, R-27-R-28, R-31-R-32, R-38-R-41 | — | Not attempted | Commit/integration choice pending; Phase 3 remains blocked until closeout |
 | 3 | Bandit/Semgrep selected-category pipeline | Not started | Not required | Not required | — | — | — | — |
 | 4 | 24-task benchmark corpus and protected evaluator | Not started | Required | Reproducibility reviewer: required | — | — | — | — |
 | 5 | Fixed repair strategies, Run All, retest/rescan, metrics | Not started | Required | Benchmark reviewer: required | — | — | — | — |
@@ -112,3 +112,38 @@ Push state: Pushed to `origin/phase-1-backend-foundation`.
 
 Remaining work/blockers: None for Phase 1. Phase 2 is not started and requires
 external Antigravity review before its future commit/push.
+
+## Phase 2 external-review gate — 2026-08-25
+
+Completed scope:
+- Implemented secure source upload validation/private artifact intake, atomic
+  upload-to-run provenance binding, and the digest-pinned Docker sandbox
+  foundation described in `docs/phase-2/ANTIGRAVITY_HANDOFF.md`.
+- Preserved all Figma runtime UI source; only unimported typed client contracts
+  changed.
+
+Checks run and results:
+- Backend: 69 tests passed with 94% coverage, including live Docker isolation,
+  failure, timeout, output truncation, cancellation, cleanup, hostile uploads,
+  migrations, and concurrent binding.
+- Python compile and locked-install dry-run: PASS.
+- Frontend TypeScript and production build: PASS; Figma runtime-source diff empty.
+- Codex Security diff scan `153fd200-61c2-4b23-90ab-0ca3024da7fd`: complete,
+  20 changed application/dependency files, six surfaces, zero findings.
+- Diff, secret/private-path, and leaked-container hygiene checks: PASS.
+
+Codex self-review/checks: PASS after fixing Windows archive path aliases and an
+upload-binding race with red/green regression evidence.
+
+External review: Explicitly waived by the user for Phase 2 on 2026-08-25. The
+prepared `docs/phase-2/ANTIGRAVITY_HANDOFF.md` is retained as self-review and
+audit evidence; no external verdict is claimed.
+
+RISK.md updates: R-05–R-09, R-27–R-28, R-31–R-32, and R-38–R-41 updated.
+
+Commit SHA: not attempted pending external PASS.
+
+Push state: not attempted pending external PASS.
+
+Remaining work/blockers: Choose the branch integration action, record the
+result, and close Phase 2. Phase 3 must not start before Phase 2 is closed.

@@ -43,7 +43,9 @@
 | R-37 | 0–8 | Verification runs with tool versions different from the Figma `.mise.toml` pins | Build/replay drift between environments | M | Observed | Phase 0 used Node 24.11.0 and pnpm 11.23.0; export declares Node 22 and pnpm 10.34.3 | Future risk-mitigation agent |
 
 | R-38 | 1-9 | Platform-specific backend lock is reused on an incompatible runtime | Non-reproducible or failed install | M | Observed | PEP 751 lock is Python 3.14/Windows-specific | Future risk-mitigation agent |
-| R-39 | 1 | Automated security diff workbench is blocked by host application control | Reduced automated security review evidence | L | Blocked | Bundled _sqlite3 DLL blocked before scan creation | Future risk-mitigation agent |
+| R-39 | 1–2 | Automated security diff workbench may be blocked by host application control | Reduced automated security review evidence | L | Observed | Phase 1 was blocked; Phase 2 scan `153fd200-61c2-4b23-90ab-0ca3024da7fd` completed with 20 files and no findings | Future risk-mitigation agent |
+| R-40 | 2–9 | Local Docker daemon trust or Docker Desktop behavior differs from the production Linux host | Host compromise or invalid isolation evidence | M | Open | Cross-host sandbox review and production deployment validation | Future risk-mitigation agent |
+| R-41 | 2–9 | Expired upload metadata/files are not yet removed by an automatic scheduler | Retention overrun/privacy exposure | M | Open | `delete_expired` exists but no Phase 2 background cleanup scheduler invokes it | Future risk-mitigation agent |
 ## Update rule
 
 For each phase, append a dated note beneath the table: changed IDs, observed evidence, status (`Open`, `Observed`, `Accepted`, `Mitigated`, `Blocked`), and any newly discovered risk. Do not delete historical entries.
@@ -87,3 +89,38 @@ For each phase, append a dated note beneath the table: changed IDs, observed evi
   workbench could not start because Windows Application Control blocked its
   bundled `_sqlite3` DLL. Phase 1 used an independent API reviewer plus direct
   security/contract tests; the required external security gate begins at Phase 2.
+
+## 2026-08-25 — Phase 2 self-review closeout
+
+- **R-05/R-06 — Observed:** live Docker evidence proves the pinned container is
+  non-root, has zero effective capabilities, no non-loopback route, no mounts,
+  a read-only root/source, and is cleaned after execution. These risks remain
+  open pending independent review and production-host validation.
+- **R-07 — Observed:** CPU, RAM, PID, wall-time, retained-output, and tmpfs
+  limits are policy-tested; live failure, timeout, output truncation,
+  cancellation, and cleanup passed. Host/Docker-daemon exhaustion remains open.
+- **R-08 — Observed:** the hostile-input suite rejects traversal, absolute/UNC/
+  drive paths, NTFS ADS/reserved names, symlinks, special/encrypted/nested or
+  invalid archives, duplicate paths, binary/invalid UTF-8, and all configured
+  count/size/depth/ratio limits.
+- **R-09 — Open:** generated patch validation belongs to Phase 5 and was not
+  implemented in Phase 2.
+- **R-27/R-28 — Open:** receipts, manifests, errors, and sandbox evidence are
+  bounded/redacted, but source confidentiality and authorization remain risks;
+  Phase 2 is explicitly local-only and has no authentication.
+- **R-31/R-38 — Observed:** the Docker image is pinned by exact digest and the
+  Python 3.14/Windows lock dry-run passed; production-platform lock/image review
+  remains required.
+- **R-32/R-41 — Open:** artifacts are marked with a 24-hour exploratory expiry,
+  expired uploads cannot bind, and scoped deletion exists; automatic deletion
+  scheduling and deletion audit integration are not yet implemented.
+- **R-39 — Observed:** the Phase 2 Codex Security working-tree scan completed
+  successfully (`153fd200-61c2-4b23-90ab-0ca3024da7fd`), covering 20 changed
+  application/dependency files with six reviewed surfaces and no findings.
+- **R-40 — Open (new):** current live evidence comes from Docker Desktop's
+  Linux engine; the daemon is trusted infrastructure and production Linux-host
+  equivalence has not yet been independently validated.
+- **Review-gate exception:** the user explicitly waived the independent
+  Antigravity review for Phase 2 on 2026-08-25. Codex self-review, the completed
+  Codex Security scan, and all listed automated/live checks are the closeout
+  evidence; this does not represent an independent external verdict.

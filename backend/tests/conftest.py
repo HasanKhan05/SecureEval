@@ -13,8 +13,10 @@ def database_url(tmp_path: Path) -> str:
 
 
 @pytest.fixture
-def client(database_url: str) -> Iterator[TestClient]:
-    with TestClient(create_app(database_url=database_url)) as test_client:
+def client(database_url: str, tmp_path: Path) -> Iterator[TestClient]:
+    with TestClient(
+        create_app(database_url=database_url, artifact_root=tmp_path / "artifacts")
+    ) as test_client:
         yield test_client
 
 

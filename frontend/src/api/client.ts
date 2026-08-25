@@ -3,6 +3,8 @@ import type {
   HealthResponse,
   Run,
   RunCreate,
+  UploadPurpose,
+  UploadReceipt,
 } from "../contracts/api-v1";
 
 export interface SecureEvalClientOptions {
@@ -26,6 +28,7 @@ export class SecureEvalApiError extends Error {
 
 export interface SecureEvalClient {
   health(): Promise<HealthResponse>;
+  uploadSource(source: File, purpose: UploadPurpose): Promise<UploadReceipt>;
   createRun(payload: RunCreate): Promise<Run>;
   getRun(runId: string): Promise<Run>;
   startRun(runId: string): Promise<Run>;
@@ -57,7 +60,9 @@ export function createSecureEvalClient(
       ...init,
       headers: {
         Accept: "application/json",
-        ...(init?.body ? { "Content-Type": "application/json" } : {}),
+        ...(init?.body && !(init.body instanceof FormData)
+          ? { "Content-Type": "application/json" }
+          : {}),
         ...init?.headers,
       },
     });
@@ -82,6 +87,12 @@ export function createSecureEvalClient(
 
   return {
     health: () => request<HealthResponse>("/health"),
+    uploadSource: (source, purpose) => {
+      const body = new FormData();
+      body.append("purpose", purpose);
+      body.append("source", source);
+      return request<UploadReceipt>("/uploads", { method: "POST", body });
+    },
     createRun: (payload) =>
       request<Run>("/runs", {
         method: "POST",

@@ -123,17 +123,6 @@ url = "https://files.pythonhosted.org/packages/04/4b/29cac41a4d98d144bf5f6d33995
 sha256 = "63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86"
 
 [[packages]]
-name = "hatchling"
-version = "1.27.0"
-
-[[packages.wheels]]
-name = "hatchling-1.27.0-py3-none-any.whl"
-url = "https://files.pythonhosted.org/packages/08/e7/ae38d7a6dfba0533684e0b2136817d667588ae3ec984c1a4e5df5eb88482/hatchling-1.27.0-py3-none-any.whl"
-
-[packages.wheels.hashes]
-sha256 = "d3a2f3567c4f926ea39849cdf924c7e99e6686c9c8e288ae1037c8fa2a5d937b"
-
-[[packages]]
 name = "httpcore"
 version = "1.0.9"
 
@@ -211,17 +200,6 @@ url = "https://files.pythonhosted.org/packages/63/34/ba1c580383c9eada3711951fef0
 sha256 = "d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c"
 
 [[packages]]
-name = "pathspec"
-version = "1.1.1"
-
-[[packages.wheels]]
-name = "pathspec-1.1.1-py3-none-any.whl"
-url = "https://files.pythonhosted.org/packages/f1/d9/7fb5aa316bc299258e68c73ba3bddbc499654a07f151cba08f6153988714/pathspec-1.1.1-py3-none-any.whl"
-
-[packages.wheels.hashes]
-sha256 = "a00ce642f577bf7f473932318056212bc4f8bfdf53128c78bbd5af0b9b20b189"
-
-[[packages]]
 name = "pluggy"
 version = "1.6.0"
 
@@ -288,6 +266,17 @@ url = "https://files.pythonhosted.org/packages/9d/7a/d968e294073affff457b041c2be
 sha256 = "a0461110b7865f9a271aa1b51e516c9a95de9d696734a2f71e3e78f46e1d4678"
 
 [[packages]]
+name = "python-multipart"
+version = "0.0.32"
+
+[[packages.wheels]]
+name = "python_multipart-0.0.32-py3-none-any.whl"
+url = "https://files.pythonhosted.org/packages/e1/04/e8135ebd1ad02c56ec633277529b2602ff99ff634be76cdba5744cf554fd/python_multipart-0.0.32-py3-none-any.whl"
+
+[packages.wheels.hashes]
+sha256 = "ff6d3f776f16878c894e52e107296ffc890e913c611b1a4ec6c44e2821fe2e23"
+
+[[packages]]
 name = "sqlalchemy"
 version = "2.0.52"
 
@@ -308,17 +297,6 @@ url = "https://files.pythonhosted.org/packages/c8/cb/6a6a47d5b464bd08695d254f3da
 
 [packages.wheels.hashes]
 sha256 = "a86dd39d14bb45f85a3d18525215a9ef0cfd1f192ac793220e72598c90335f0c"
-
-[[packages]]
-name = "trove-classifiers"
-version = "2026.6.1.19"
-
-[[packages.wheels]]
-name = "trove_classifiers-2026.6.1.19-py3-none-any.whl"
-url = "https://files.pythonhosted.org/packages/7c/a4/81502f486f01db95bc8320646a8a12511f5e556cb63d5e224d91816605c4/trove_classifiers-2026.6.1.19-py3-none-any.whl"
-
-[packages.wheels.hashes]
-sha256 = "ab4c4ec93cc4a4e7815fa759906e05e6bb3f2fbd92ea0f897288c6a43efd15b3"
 
 [[packages]]
 name = "typing-extensions"

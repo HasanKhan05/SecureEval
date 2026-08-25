@@ -2,13 +2,13 @@ import json
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session, selectinload
 
-from app.enums import ALL_STRATEGIES, MODE_LABELS, JobStatus, StrategyId
+from app.enums import ALL_STRATEGIES, MODE_LABELS, JobStatus, Mode, StrategyId
 from app.errors import APIError
 from app.manifests import canonical_manifest, manifest_hash
-from app.models import RunRecord, StrategyAttemptRecord
+from app.models import RunRecord, StrategyAttemptRecord, UploadArtifactRecord
 from app.schemas import AttemptSummary, RunCreate, RunResponse
 
 
@@ -66,15 +66,58 @@ def _to_response(record: RunRecord) -> RunResponse:
     )
 
 
+def _source_artifact(
+    session: Session, payload: RunCreate, run_id: str
+) -> dict[str, object] | None:
+    if payload.upload_id is None:
+        return None
+    artifact = session.get(UploadArtifactRecord, payload.upload_id)
+    if artifact is None or artifact.state != "available" or artifact.deleted_at is not None:
+        raise APIError(404, "upload_not_found", "Source upload not found.")
+    expires_at = datetime.fromisoformat(artifact.expires_at.replace("Z", "+00:00"))
+    if expires_at <= datetime.now(UTC):
+        raise APIError(410, "upload_expired", "Source upload has expired.")
+    expected_purpose = (
+        "custom_prompt_context"
+        if payload.mode == Mode.CUSTOM_PROMPT
+        else "uploaded_code"
+    )
+    if artifact.purpose != expected_purpose:
+        raise APIError(409, "upload_purpose_mismatch", "Source upload purpose does not match run mode.")
+    if artifact.bound_run_id is not None:
+        raise APIError(409, "upload_already_bound", "Source upload is already bound.")
+    claim = session.execute(
+        update(UploadArtifactRecord)
+        .where(
+            UploadArtifactRecord.upload_id == artifact.upload_id,
+            UploadArtifactRecord.bound_run_id.is_(None),
+        )
+        .values(bound_run_id=run_id)
+        .execution_options(synchronize_session=False)
+    )
+    if claim.rowcount != 1:
+        raise APIError(409, "upload_already_bound", "Source upload is already bound.")
+    return {
+        "upload_id": artifact.upload_id,
+        "purpose": artifact.purpose,
+        "content_hash": artifact.content_hash,
+        "file_count": artifact.file_count,
+        "total_bytes": artifact.total_bytes,
+        "retention_class": artifact.retention_class,
+    }
+
+
 def create_run(session: Session, payload: RunCreate) -> RunResponse:
     strategies = _expanded_strategies(payload)
     timestamp = _now()
     run_id = _new_id("run")
+    source_artifact = _source_artifact(session, payload, run_id)
     manifest_json = canonical_manifest(
         payload,
         strategies,
         run_id=run_id,
         created_at=timestamp,
+        source_artifact=source_artifact,
     )
     categories = sorted(item.value for item in payload.scan_categories)
     record = RunRecord(

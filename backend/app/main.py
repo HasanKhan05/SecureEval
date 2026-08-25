@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, Path as ApiPath, Request, status
+from fastapi import Depends, FastAPI, File, Form, Path as ApiPath, Request, UploadFile, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session, sessionmaker
@@ -20,7 +20,11 @@ from app.errors import (
     error_response,
     validation_error_handler,
 )
-from app.schemas import HealthResponse, RunCreate, RunResponse
+from app.schemas import HealthResponse, RunCreate, RunResponse, UploadReceipt
+from app.uploads.policy import UploadPolicy, UploadPurpose
+from app.uploads.service import accept_upload, read_bounded_upload, reject_upload
+from app.uploads.store import ArtifactStore
+from app.uploads.validation import UploadRejected
 from app.services import cancel_run, create_run, get_run, start_run
 
 DEFAULT_DATABASE_URL = "sqlite:///./data/secureeval.db"
@@ -44,6 +48,7 @@ def _session_dependency(request: Request) -> Iterator[Session]:
 def create_app(
     database_url: str | None = None,
     allowed_origins: list[str] | tuple[str, ...] | None = None,
+    artifact_root: Path | None = None,
 ) -> FastAPI:
     resolved_url = database_url or os.getenv("SECUREEVAL_DATABASE_URL", DEFAULT_DATABASE_URL)
     if allowed_origins is None:
@@ -59,6 +64,11 @@ def create_app(
 
     upgrade_database(resolved_url)
     engine, session_factory = create_database(resolved_url)
+    resolved_artifact_root = artifact_root or Path(
+        os.getenv("SECUREEVAL_ARTIFACT_ROOT", "./data/artifacts")
+    )
+    artifact_store = ArtifactStore(resolved_artifact_root)
+    upload_policy = UploadPolicy()
 
     @asynccontextmanager
     async def lifespan(_application: FastAPI):
@@ -75,6 +85,8 @@ def create_app(
     )
     application.state.engine = engine
     application.state.session_factory = session_factory
+    application.state.artifact_store = artifact_store
+    application.state.upload_policy = upload_policy
 
     @application.middleware("http")
     async def request_id_middleware(request: Request, call_next):
@@ -106,6 +118,32 @@ def create_app(
     @application.post("/api/v1/runs", response_model=RunResponse, status_code=status.HTTP_201_CREATED)
     def create(payload: RunCreate, session: Session = Depends(_session_dependency)) -> RunResponse:
         return create_run(session, payload)
+
+    @application.post(
+        "/api/v1/uploads",
+        response_model=UploadReceipt,
+        status_code=status.HTTP_201_CREATED,
+    )
+    async def upload(
+        purpose: Annotated[UploadPurpose, Form()],
+        source: Annotated[UploadFile, File()],
+        session: Session = Depends(_session_dependency),
+    ) -> UploadReceipt:
+        try:
+            payload = await read_bounded_upload(source, upload_policy)
+            return accept_upload(
+                session,
+                artifact_store,
+                purpose,
+                source.filename or "",
+                payload,
+                upload_policy,
+            )
+        except UploadRejected as exc:
+            reject_upload(session, exc.reason)
+            raise APIError(
+                400, "upload_rejected", "Source upload was rejected."
+            ) from exc
 
     @application.get("/api/v1/runs/{run_id}", response_model=RunResponse)
     def read(run_id: RunId, session: Session = Depends(_session_dependency)) -> RunResponse:
