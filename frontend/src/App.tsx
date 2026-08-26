@@ -216,24 +216,26 @@ function calcEfficiency(id: StrategyId): number {
 function UsageRow({ label, input, output, total, cost, latency }: { label: string; input: number; output: number; total: number; cost: number; latency: number }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
-      <div className="px-4 py-2 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+      <div className="px-4 py-2 border-b border-slate-100 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
         <span className="text-[9px] font-mono text-slate-400 uppercase tracking-widest">{label}</span>
         <span className="text-[9px] font-mono text-slate-400">Estimated cost depends on configured model/provider pricing</span>
       </div>
-      <div className="grid grid-cols-5 divide-x divide-slate-100 p-0">
-        {[
-          { l: 'Input', v: input.toLocaleString(), unit: 'tokens' },
-          { l: 'Output', v: output.toLocaleString(), unit: 'tokens' },
-          { l: 'Total', v: total.toLocaleString(), unit: 'tokens' },
-          { l: 'Est. Cost', v: `$${cost.toFixed(4)}`, unit: '' },
-          { l: 'Latency', v: `${latency}s`, unit: '' },
-        ].map(item => (
-          <div key={item.l} className="px-3 py-2.5 text-center">
-            <div className="text-[9px] font-mono text-slate-400 uppercase tracking-widest mb-1">{item.l}</div>
-            <div className="font-mono text-sm font-bold text-[#111118]">{item.v}</div>
-            {item.unit && <div className="text-[9px] font-mono text-slate-400">{item.unit}</div>}
-          </div>
-        ))}
+      <div className="overflow-x-auto">
+        <div className="grid grid-cols-5 divide-x divide-slate-100 p-0 min-w-[520px]">
+          {[
+            { l: 'Input', v: input.toLocaleString(), unit: 'tokens' },
+            { l: 'Output', v: output.toLocaleString(), unit: 'tokens' },
+            { l: 'Total', v: total.toLocaleString(), unit: 'tokens' },
+            { l: 'Est. Cost', v: `$${cost.toFixed(4)}`, unit: '' },
+            { l: 'Latency', v: `${latency}s`, unit: '' },
+          ].map(item => (
+            <div key={item.l} className="px-3 py-2.5 text-center">
+              <div className="text-[9px] font-mono text-slate-400 uppercase tracking-widest mb-1">{item.l}</div>
+              <div className="font-mono text-sm font-bold text-[#111118]">{item.v}</div>
+              {item.unit && <div className="text-[9px] font-mono text-slate-400">{item.unit}</div>}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   )
@@ -1008,7 +1010,7 @@ function ScanSelectionScreen({ onDone, initialSelected }: { onDone: (scans: Scan
         </button>
       </div>
 
-      <div className="flex items-center justify-between p-4 rounded-lg border border-slate-200 bg-white shadow-sm mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-lg border border-slate-200 bg-white shadow-sm mb-6">
         <div>
           <span className="font-display font-black text-lg text-[#111118]">{selected.size}</span>
           <span className="text-sm text-slate-500 font-mono ml-1">of 5 categories selected</span>
@@ -1021,7 +1023,7 @@ function ScanSelectionScreen({ onDone, initialSelected }: { onDone: (scans: Scan
           )}
         </div>
         <button disabled={selected.size === 0} onClick={() => onDone(Array.from(selected))}
-          className="inline-flex items-center gap-3 px-7 py-3.5 bg-[#1B3A6B] hover:bg-[#15305A] disabled:opacity-25 disabled:cursor-not-allowed text-white font-display font-bold uppercase tracking-widest text-sm rounded transition-all hover:scale-[1.02] shadow-sm shrink-0">
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-3 px-7 py-3.5 bg-[#1B3A6B] hover:bg-[#15305A] disabled:opacity-25 disabled:cursor-not-allowed text-white font-display font-bold uppercase tracking-widest text-sm rounded transition-all hover:scale-[1.02] shadow-sm shrink-0">
           Run Security Analysis <span>→</span>
         </button>
       </div>
@@ -1373,20 +1375,24 @@ function ComparisonScreen({ mode, strategies, onDone }: { mode: Mode; strategies
           <div className="px-5 py-2 rounded border border-[#1B3A6B]/30 bg-[#1B3A6B]/5 text-[11px] font-mono text-[#1B3A6B] shadow-sm">
             Original Vulnerable Code
           </div>
-          {/* Connector lines */}
-          <div className="relative flex w-full justify-center" style={{ height: 24 }}>
-            <div className="absolute top-0 left-1/2 w-px h-full bg-slate-300 -translate-x-1/2" />
-            <div className="absolute top-1/2 left-[16%] right-[16%] h-px bg-slate-300" />
-            {strategies.length > 1 && strategies.map((_, i) => {
-              const pct = strategies.length === 1 ? 50 : 16 + (i / (strategies.length - 1)) * 68
-              return <div key={i} className="absolute bottom-0 w-px h-1/2 bg-slate-300" style={{ left: `${pct}%` }} />
-            })}
-          </div>
-          {/* Branch cards */}
-          <div className="flex gap-3 w-full">
-            {strategies.map(id => (
-              <BranchCard key={id} id={id} stage={branchStages[id] || 'idle'} />
-            ))}
+          <div className="w-full overflow-x-auto pb-1">
+            <div className={strategies.length > 1 ? 'min-w-[520px]' : ''}>
+              {/* Connector lines */}
+              <div className="relative flex w-full justify-center" style={{ height: 24 }}>
+                <div className="absolute top-0 left-1/2 w-px h-full bg-slate-300 -translate-x-1/2" />
+                <div className="absolute top-1/2 left-[16%] right-[16%] h-px bg-slate-300" />
+                {strategies.length > 1 && strategies.map((_, i) => {
+                  const pct = strategies.length === 1 ? 50 : 16 + (i / (strategies.length - 1)) * 68
+                  return <div key={i} className="absolute bottom-0 w-px h-1/2 bg-slate-300" style={{ left: `${pct}%` }} />
+                })}
+              </div>
+              {/* Branch cards */}
+              <div className="flex gap-3 w-full">
+                {strategies.map(id => (
+                  <BranchCard key={id} id={id} stage={branchStages[id] || 'idle'} />
+                ))}
+              </div>
+            </div>
           </div>
         </div>
 
