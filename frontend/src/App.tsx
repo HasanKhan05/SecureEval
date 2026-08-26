@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { ScanCategoryId, StrategyId } from './contracts/api-v1'
 import { SCAN_CATEGORIES, STRATEGY_IDS, STRATEGY_META } from './taxonomy'
 
@@ -18,6 +18,17 @@ interface BenchmarkTask {
   id: string; title: string
   description: string; expectedBehavior: string
   domain: string; complexity: 'low' | 'medium' | 'high'
+}
+
+interface DemoSession {
+  screen: number
+  mode: Mode
+  selectedTaskId: string | null
+  customPrompt: string
+  uploadedCode: string
+  uploadMeta: UploadMeta | null
+  selectedScans: ScanCategoryId[]
+  selectedStrategies: StrategyId[]
 }
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
@@ -49,6 +60,54 @@ const BENCHMARK_TASKS: BenchmarkTask[] = [
   { id: 'T-24', title: 'Multi-Source Config Loader',    domain: 'config',         complexity: 'medium', description: 'Load and merge configuration from multiple YAML files in priority order for a microservice.', expectedBehavior: 'Returns merged config dict. Raises ConfigError on schema violations.' },
 ]
 
+const DEMO_SESSION_KEY = 'secureeval.demo-session.v1'
+
+const defaultDemoSession = (): DemoSession => ({
+  screen: 0,
+  mode: 'benchmark',
+  selectedTaskId: null,
+  customPrompt: '',
+  uploadedCode: '',
+  uploadMeta: null,
+  selectedScans: [],
+  selectedStrategies: [...STRATEGY_IDS],
+})
+
+function loadDemoSession(): DemoSession {
+  const fallback = defaultDemoSession()
+  if (typeof window === 'undefined') return fallback
+
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(DEMO_SESSION_KEY) || '{}') as Partial<DemoSession>
+    const mode: Mode = saved.mode === 'custom' || saved.mode === 'upload' ? saved.mode : 'benchmark'
+    const selectedTaskId = BENCHMARK_TASKS.some(task => task.id === saved.selectedTaskId) ? saved.selectedTaskId! : null
+    const selectedScans = Array.isArray(saved.selectedScans)
+      ? [...new Set(saved.selectedScans.filter((id): id is ScanCategoryId => SCAN_CATEGORIES.some(category => category.id === id)))]
+      : []
+    const selectedStrategies = Array.isArray(saved.selectedStrategies)
+      ? [...new Set(saved.selectedStrategies.filter((id): id is StrategyId => STRATEGY_IDS.includes(id as StrategyId)))]
+      : [...STRATEGY_IDS]
+    const customPrompt = typeof saved.customPrompt === 'string' ? saved.customPrompt.slice(0, 1000) : ''
+    const uploadedCode = typeof saved.uploadedCode === 'string' ? saved.uploadedCode.slice(0, 100_000) : ''
+    const rawMeta = saved.uploadMeta && typeof saved.uploadMeta === 'object' ? saved.uploadMeta : null
+    const uploadMeta: UploadMeta | null = rawMeta ? {
+      fileName: typeof rawMeta.fileName === 'string' ? rawMeta.fileName.slice(0, 255) : '',
+      expectedBehavior: typeof rawMeta.expectedBehavior === 'string' ? rawMeta.expectedBehavior.slice(0, 2_000) : '',
+      dependencies: typeof rawMeta.dependencies === 'string' ? rawMeta.dependencies.slice(0, 1_000) : '',
+      testFileName: typeof rawMeta.testFileName === 'string' ? rawMeta.testFileName.slice(0, 255) : '',
+      hasTests: rawMeta.hasTests === true,
+    } : null
+    let screen = Number.isInteger(saved.screen) ? Math.min(7, Math.max(0, saved.screen!)) : 0
+
+    if (screen >= 2 && ((mode === 'benchmark' && !selectedTaskId) || (mode === 'custom' && customPrompt.trim().length < 20) || (mode === 'upload' && !uploadedCode.trim()))) screen = 1
+    if (screen >= 4 && selectedScans.length === 0) screen = 3
+    if (screen >= 6 && selectedStrategies.length === 0) screen = 5
+
+    return { screen, mode, selectedTaskId, customPrompt, uploadedCode, uploadMeta, selectedScans, selectedStrategies }
+  } catch {
+    return fallback
+  }
+}
 
 const EXAMPLE_PROMPTS = [
   'Create a Python function that retrieves a user from a SQLite database by username.',
@@ -315,7 +374,7 @@ function TopNav({ screen, mode, onNav }: { screen: number; mode: Mode; onNav: (s
         {screen > 0 && <ModeBadge mode={mode} />}
         <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-mono">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="hidden sm:block"></span>
+          <span className="hidden sm:block">Local demo</span>
         </div>
       </div>
     </header>
@@ -325,17 +384,6 @@ function TopNav({ screen, mode, onNav }: { screen: number; mode: Mode; onNav: (s
 // ─── Screen 0: Landing ────────────────────────────────────────────────────────
 
 function LandingScreen({ onStart }: { onStart: () => void }) {
-  const benchStats = [
-    { v: '24',  l: 'Benchmark Tasks',       s: 'Realistic programming tasks' },
-    { v: '68%', l: 'Secure-and-Functional', s: 'Across all strategies' },
-    { v: '91%', l: 'Repair Success Rate',   s: 'Vulnerability addressed' },
-    { v: '4%',  l: 'Regression Rate',       s: 'Repairs that broke tests' },
-  ]
-  const customStats = [
-    { v: '312', l: 'Custom Experiments', s: 'Exploratory runs' },
-    { v: '847', l: 'Findings Detected',  s: 'Across all runs' },
-    { v: '936', l: 'Repairs Attempted',  s: 'Across all strategies' },
-  ]
   const pipeline = ['Prompt', 'Generate', 'Scan Config', 'Analyze', 'Repair', 'Verify', 'Review', 'Results']
 
   return (
@@ -344,7 +392,7 @@ function LandingScreen({ onStart }: { onStart: () => void }) {
         <div className="flex-1 min-w-0">
           <div className="mb-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-[#1B3A6B]/20 bg-[#1B3A6B]/5">
             <span className="w-1.5 h-1.5 rounded-full bg-[#1B3A6B] animate-pulse" />
-            <span className="text-[10px] font-mono text-[#1B3A6B] tracking-widest uppercase">AI Security Research · 2026</span>
+            <span className="text-[10px] font-mono text-[#1B3A6B] tracking-widest uppercase">Interactive Local Portfolio Demo</span>
           </div>
           <h1 className="font-display font-black text-[40px] md:text-[56px] leading-[0.88] tracking-tight text-[#111118] mb-4 uppercase">
             AI Security<br /><span className="text-[#1B3A6B]">Code Repair</span><br />Research Platform
@@ -355,7 +403,7 @@ function LandingScreen({ onStart }: { onStart: () => void }) {
           </p>
           <button onClick={onStart}
             className="inline-flex items-center gap-3 px-7 py-3.5 bg-[#1B3A6B] hover:bg-[#15305A] text-white font-display font-bold uppercase tracking-widest text-sm rounded transition-all hover:scale-[1.02] shadow-sm">
-            Start Evaluation <span>→</span>
+            Start Demo <span>→</span>
           </button>
           <div className="mt-4 flex items-center gap-2">
             <div className="h-px w-5 bg-slate-300" />
@@ -404,6 +452,7 @@ function PromptSelectionScreen({ onBenchmark, onCustom, onUpload }: { onBenchmar
   const [uploadedCode, setUploadedCode] = useState('')
   const [pasteOpen, setPasteOpen] = useState(false)
   const [dragOver, setDragOver] = useState(false)
+  const [uploadError, setUploadError] = useState('')
   const [uploadedFileName, setUploadedFileName] = useState('')
   const [expectedBehavior, setExpectedBehavior] = useState('')
   const [dependencies, setDependencies] = useState('')
@@ -435,32 +484,46 @@ function PromptSelectionScreen({ onBenchmark, onCustom, onUpload }: { onBenchmar
   const indicatorWidth = 'calc(33.33% - 8px)'
 
   const modeDescs: Record<Mode, string> = {
-    benchmark: '◉ Controlled Research Mode — Run a reproducible experiment using one of 24 predefined programming tasks with fixed functional tests.',
-    custom:    '◈ Exploratory Mode — Describe any Python task. Custom experiments are evaluated independently and not included in official benchmark statistics.',
-    upload:    '⬡ Code Audit Mode — Upload or paste your own Python code and run security analysis, repair strategies, and comparison on it.',
+    benchmark: '◉ Demo Benchmark Mode — Choose one of 24 deterministic sample programming tasks.',
+    custom:    '◈ Demo Prompt Mode — Describe a Python task and follow a deterministic local sample flow.',
+    upload:    '⬡ Demo Code Audit — Load or paste Python code locally to preview the analysis and comparison UI. Code is not executed.',
   }
   const modeColors: Record<Mode, string> = {
     benchmark: 'text-[#1B3A6B]', custom: 'text-violet-700', upload: 'text-teal-700',
   }
 
-  const handleFileDrop = (e: React.DragEvent) => {
-    e.preventDefault(); setDragOver(false)
-    const file = e.dataTransfer.files[0]
-    if (!file || !file.name.endsWith('.py')) return
-    setUploadedFileName(file.name)
+  const readPythonFile = (file: File | undefined) => {
+    if (!file) return
+    if (!file.name.toLowerCase().endsWith('.py')) {
+      setUploadError('Choose a Python file ending in .py, or paste code below.')
+      return
+    }
+    if (file.size > 100_000) {
+      setUploadError('For this local demo, choose a Python file smaller than 100 KB.')
+      return
+    }
     const reader = new FileReader()
-    reader.onload = ev => setUploadedCode(ev.target?.result as string ?? '')
+    reader.onerror = () => setUploadError('The file could not be read. Try another file or paste the code below.')
+    reader.onload = ev => {
+      const code = typeof ev.target?.result === 'string' ? ev.target.result : ''
+      if (!code.trim()) {
+        setUploadError('The selected file is empty.')
+        return
+      }
+      setUploadedFileName(file.name)
+      setUploadedCode(code)
+      setUploadError('')
+    }
     reader.readAsText(file)
   }
 
-  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setUploadedFileName(file.name)
-    const reader = new FileReader()
-    reader.onload = ev => setUploadedCode(ev.target?.result as string ?? '')
-    reader.readAsText(file)
+  const handleFileDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+    readPythonFile(e.dataTransfer.files[0])
   }
+
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => readPythonFile(e.target.files?.[0])
 
   const canStartUpload = uploadedCode.trim().length > 20
 
@@ -580,7 +643,7 @@ function PromptSelectionScreen({ onBenchmark, onCustom, onUpload }: { onBenchmar
                   <span className={`text-[10px] font-mono ${customText.length > 800 ? 'text-rose-500' : 'text-slate-400'}`}>{customText.length} / 1000</span>
                 </div>
                 <textarea value={customText} onChange={e => setCustomText(e.target.value.slice(0, 1000))}
-                  placeholder="Describe the Python application, function, or utility you want the LLM to create…"
+                  placeholder="Describe the Python application, function, or utility for the demo generator…"
                   rows={6} className="w-full px-4 py-3 text-sm font-mono text-slate-700 placeholder-slate-400 bg-white focus:outline-none resize-none" />
                 {customText && (
                   <div className="flex justify-end px-4 py-2 border-t border-slate-100">
@@ -602,10 +665,13 @@ function PromptSelectionScreen({ onBenchmark, onCustom, onUpload }: { onBenchmar
                   ))}
                 </div>
               </div>
-              <button disabled={customText.trim().length < 20} onClick={() => onCustom(customText.trim())}
-                className="w-full inline-flex items-center justify-center gap-3 px-8 py-3.5 bg-violet-700 hover:bg-violet-800 disabled:opacity-25 disabled:cursor-not-allowed text-white font-display font-bold uppercase tracking-widest text-sm rounded transition-all hover:scale-[1.02] shadow-sm">
-                Generate From Custom Prompt <span>→</span>
-              </button>
+              <div>
+                <button disabled={customText.trim().length < 20} onClick={() => onCustom(customText.trim())}
+                  className="w-full inline-flex items-center justify-center gap-3 px-8 py-3.5 bg-violet-700 hover:bg-violet-800 disabled:opacity-25 disabled:cursor-not-allowed text-white font-display font-bold uppercase tracking-widest text-sm rounded transition-all hover:scale-[1.02] shadow-sm">
+                  Generate From Custom Prompt <span>→</span>
+                </button>
+                {customText.length > 0 && customText.trim().length < 20 && <p role="alert" className="mt-2 text-[10px] font-mono text-rose-600">Add a little more detail — the prompt must contain at least 20 characters.</p>}
+              </div>
             </div>
           </div>
         )}
@@ -619,7 +685,7 @@ function PromptSelectionScreen({ onBenchmark, onCustom, onUpload }: { onBenchmar
                 <span className="text-teal-600 mt-0.5">⬡</span>
                 <div>
                   <div className="text-[10px] font-mono text-teal-700 uppercase tracking-widest mb-1">Code Audit Mode — Exploratory</div>
-                  <p className="text-xs text-teal-800 leading-relaxed">Upload or paste your Python code to run the full security analysis and repair pipeline. Uploaded-code experiments are analyzed individually and <strong>not included in official benchmark aggregate statistics</strong> unless controlled tests and ground truth are provided.</p>
+                  <p className="text-xs text-teal-800 leading-relaxed">Upload or paste Python code to preview the complete analysis and repair workflow. Files stay in this browser and are <strong>not executed or sent to an external service</strong>.</p>
                 </div>
               </div>
 
@@ -653,6 +719,7 @@ function PromptSelectionScreen({ onBenchmark, onCustom, onUpload }: { onBenchmar
                   </>
                 )}
               </div>
+              {uploadError && <p role="alert" className="-mt-3 text-[10px] font-mono text-rose-600">{uploadError}</p>}
 
               {/* Or paste code */}
               <div>
@@ -667,7 +734,7 @@ function PromptSelectionScreen({ onBenchmark, onCustom, onUpload }: { onBenchmar
                       <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest">Paste Python Code</span>
                       <span className={`text-[10px] font-mono ${uploadedCode.length > 8000 ? 'text-rose-500' : 'text-slate-400'}`}>{uploadedCode.split('\n').length} lines</span>
                     </div>
-                    <textarea value={uploadedCode} onChange={e => { setUploadedCode(e.target.value); setUploadedFileName('') }}
+                    <textarea value={uploadedCode} onChange={e => { setUploadedCode(e.target.value); setUploadedFileName(''); setUploadError('') }}
                       placeholder="# Paste your Python code here…"
                       rows={10} className="w-full px-4 py-3 text-[11px] font-mono text-slate-700 placeholder-slate-300 bg-white focus:outline-none resize-none" />
                   </div>
@@ -731,10 +798,13 @@ function PromptSelectionScreen({ onBenchmark, onCustom, onUpload }: { onBenchmar
                 </div>
               </div>
 
-              <button disabled={!canStartUpload} onClick={() => onUpload(uploadedCode, { fileName: uploadedFileName, expectedBehavior, dependencies, testFileName, hasTests: !!testFileName })}
-                className="w-full inline-flex items-center justify-center gap-3 px-8 py-3.5 bg-teal-700 hover:bg-teal-800 disabled:opacity-25 disabled:cursor-not-allowed text-white font-display font-bold uppercase tracking-widest text-sm rounded transition-all hover:scale-[1.02] shadow-sm">
-                Start Code Analysis <span>→</span>
-              </button>
+              <div>
+                <button disabled={!canStartUpload} onClick={() => onUpload(uploadedCode, { fileName: uploadedFileName, expectedBehavior, dependencies, testFileName, hasTests: !!testFileName })}
+                  className="w-full inline-flex items-center justify-center gap-3 px-8 py-3.5 bg-teal-700 hover:bg-teal-800 disabled:opacity-25 disabled:cursor-not-allowed text-white font-display font-bold uppercase tracking-widest text-sm rounded transition-all hover:scale-[1.02] shadow-sm">
+                  Start Code Analysis <span>→</span>
+                </button>
+                {!canStartUpload && <p className="mt-2 text-[10px] font-mono text-slate-500">Load or paste at least 20 characters of Python code to continue.</p>}
+              </div>
             </div>
           </div>
         )}
@@ -813,7 +883,7 @@ function CodeGenerationScreen({ mode, task, customPrompt, uploadedCode, uploadMe
           <CodePanel code={displayCode} title={uploadMeta?.fileName || 'uploaded_code.py'} highlights={[9, 10, 11, 12, 13]} />
           <div className="flex items-start gap-3 p-4 rounded-lg border border-amber-200 bg-amber-50">
             <span className="text-amber-600 mt-0.5">⚠</span>
-            <p className="text-xs text-slate-600 leading-relaxed">Preliminary static check suggests potential security issues in the uploaded code. Configure your security scan in the next step. LLM token usage for this experiment begins at the repair stage.</p>
+            <p className="text-xs text-slate-600 leading-relaxed">Deterministic sample findings are ready for this code preview. Configure the demo scan next; token, cost, and latency values are illustrative.</p>
           </div>
           <button onClick={onDone}
             className="inline-flex items-center gap-3 px-7 py-3.5 bg-teal-700 hover:bg-teal-800 text-white font-display font-bold uppercase tracking-widest text-sm rounded transition-all hover:scale-[1.02] shadow-sm">
@@ -852,7 +922,7 @@ function CodeGenerationScreen({ mode, task, customPrompt, uploadedCode, uploadMe
             <span className="text-[#1B3A6B] text-xl">⚡</span>
           </div>
           <p className="text-slate-500 text-sm mb-1">Ready to generate code</p>
-          <p className="text-slate-400 text-xs font-mono mb-7">GPT-4o · temperature=0 · max_tokens=1024</p>
+          <p className="text-slate-400 text-xs font-mono mb-7">Local deterministic demo · no API key</p>
           <button onClick={() => setPhase('generating')}
             className="inline-flex items-center gap-3 px-7 py-3.5 bg-[#1B3A6B] hover:bg-[#15305A] text-white font-display font-bold uppercase tracking-widest text-sm rounded transition-all hover:scale-[1.02] shadow-sm">
             Generate Code
@@ -868,8 +938,8 @@ function CodeGenerationScreen({ mode, task, customPrompt, uploadedCode, uploadMe
                 style={{ animation: `bounce-stagger 1.2s ease-in-out ${i * 0.16}s infinite` }} />
             ))}
           </div>
-          <p className="font-mono text-sm text-[#1B3A6B]">Querying LLM{dots}</p>
-          <p className="text-slate-400 text-[11px] font-mono mt-1">GPT-4o · temperature=0 · max_tokens=1024</p>
+          <p className="font-mono text-sm text-[#1B3A6B]">Generating sample code{dots}</p>
+          <p className="text-slate-400 text-[11px] font-mono mt-1">Local deterministic demo · no API key</p>
         </div>
       )}
 
@@ -880,8 +950,8 @@ function CodeGenerationScreen({ mode, task, customPrompt, uploadedCode, uploadMe
             <span className="font-mono text-sm text-emerald-700">Code generated successfully</span>
             <span className="ml-auto text-[10px] font-mono text-slate-400">{GENERATION_USAGE.latency}s · {GENERATION_USAGE.total.toLocaleString()} tokens</span>
           </div>
-          <UsageRow label="LLM Usage — Code Generation" input={GENERATION_USAGE.input} output={GENERATION_USAGE.output} total={GENERATION_USAGE.total} cost={GENERATION_USAGE.cost} latency={GENERATION_USAGE.latency} />
-          <CodePanel code={SAMPLE_CODE} title="generated_code.py · LLM Output" highlights={[9, 10, 11, 12, 13]} />
+          <UsageRow label="Sample Usage — Code Generation" input={GENERATION_USAGE.input} output={GENERATION_USAGE.output} total={GENERATION_USAGE.total} cost={GENERATION_USAGE.cost} latency={GENERATION_USAGE.latency} />
+          <CodePanel code={SAMPLE_CODE} title="generated_code.py · Demo Output" highlights={[9, 10, 11, 12, 13]} />
           <div className="flex items-start gap-3 p-4 rounded-lg border border-amber-200 bg-amber-50">
             <span className="text-amber-600 mt-0.5">⚠</span>
             <p className="text-xs text-slate-600 leading-relaxed">Preliminary static check suggests potential security issues on lines 9–13. Configure your security scan in the next step.</p>
@@ -898,8 +968,8 @@ function CodeGenerationScreen({ mode, task, customPrompt, uploadedCode, uploadMe
 
 // ─── Screen 3: Scan Selection ─────────────────────────────────────────────────
 
-function ScanSelectionScreen({ onDone }: { onDone: (scans: ScanCategoryId[]) => void }) {
-  const [selected, setSelected] = useState<Set<ScanCategoryId>>(new Set())
+function ScanSelectionScreen({ onDone, initialSelected }: { onDone: (scans: ScanCategoryId[]) => void; initialSelected: ScanCategoryId[] }) {
+  const [selected, setSelected] = useState<Set<ScanCategoryId>>(() => new Set(initialSelected))
 
   const toggle = (id: ScanCategoryId) => {
     setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
@@ -910,7 +980,7 @@ function ScanSelectionScreen({ onDone }: { onDone: (scans: ScanCategoryId[]) => 
     <div className="min-h-[calc(100vh-56px)] px-4 md:px-10 py-8 max-w-5xl mx-auto">
       <h2 className="font-display font-black text-xl md:text-2xl text-[#111118] uppercase tracking-tight mb-1">Configure Security Scan</h2>
       <p className="text-sm text-slate-500 mb-2 max-w-xl leading-relaxed">Select which security categories to scan for. Multiple categories can be active simultaneously — generated code may contain more than one vulnerability type.</p>
-      <p className="text-[11px] font-mono text-slate-400 mb-6">Scanning is performed using Bandit and Semgrep. </p>
+      <p className="text-[11px] font-mono text-slate-400 mb-6">Demo analysis uses deterministic sample findings modelled after Bandit and Semgrep output.</p>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
         {SCAN_CATEGORIES.map(cat => {
@@ -961,21 +1031,40 @@ function ScanSelectionScreen({ onDone }: { onDone: (scans: ScanCategoryId[]) => 
 
 // ─── Screen 4: Security Analysis ─────────────────────────────────────────────
 
-function AnalysisScreen({ mode, task, scans, onDone }: { mode: Mode; task: BenchmarkTask | null; scans: ScanCategoryId[]; onDone: () => void }) {
+function AnalysisScreen({ mode, task, scans, onDone, onBack }: { mode: Mode; task: BenchmarkTask | null; scans: ScanCategoryId[]; onDone: () => void; onBack: () => void }) {
   const [scanPhase, setScanPhase] = useState<Record<string, 'queued' | 'scanning' | 'done'>>({})
   const [activeFind, setActiveFind] = useState<number | null>(null)
+  const [runState, setRunState] = useState<'running' | 'success' | 'failed' | 'cancelled'>('running')
+  const [attempt, setAttempt] = useState(0)
+  const timers = useRef<Array<ReturnType<typeof setTimeout>>>([])
+
+  const clearTimers = () => {
+    timers.current.forEach(clearTimeout)
+    timers.current = []
+  }
 
   useEffect(() => {
+    clearTimers()
     const init: Record<string, 'queued' | 'scanning' | 'done'> = {}
     scans.forEach(s => { init[s] = 'queued' })
     setScanPhase(init)
-    scans.forEach((s, i) => {
-      setTimeout(() => setScanPhase(p => ({ ...p, [s]: 'scanning' })), i * 600 + 300)
-      setTimeout(() => setScanPhase(p => ({ ...p, [s]: 'done' })), i * 600 + 1600)
-    })
-  }, [])
+    setActiveFind(null)
+    setRunState('running')
 
-  const allDone = scans.length > 0 && scans.every(s => scanPhase[s] === 'done')
+    scans.forEach((s, i) => {
+      timers.current.push(setTimeout(() => setScanPhase(p => ({ ...p, [s]: 'scanning' })), i * 600 + 300))
+      timers.current.push(setTimeout(() => setScanPhase(p => ({ ...p, [s]: 'done' })), i * 600 + 1600))
+    })
+    timers.current.push(setTimeout(() => setRunState('success'), scans.length * 600 + 1750))
+    return clearTimers
+  }, [attempt, scans])
+
+  const stopRun = (state: 'failed' | 'cancelled') => {
+    clearTimers()
+    setRunState(state)
+  }
+
+  const allDone = runState === 'success' && scans.length > 0 && scans.every(s => scanPhase[s] === 'done')
 
   const findings = ([
     { id: 0, cat: 'injection', sev: 'HIGH', title: 'Injection', line: 9, tool: 'Bandit B608', msg: 'String-formatted SQL query — use parameterized queries.' },
@@ -1021,6 +1110,30 @@ function AnalysisScreen({ mode, task, scans, onDone }: { mode: Mode; task: Bench
         </div>
       </div>
 
+      {runState === 'running' && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#1B3A6B]/15 bg-[#1B3A6B]/5 px-4 py-3">
+          <p className="text-[10px] font-mono text-[#1B3A6B]">Deterministic local simulation · no uploaded code is executed</p>
+          <div className="flex gap-2">
+            <button onClick={() => stopRun('failed')} className="text-[10px] font-mono text-slate-500 hover:text-rose-600 transition-colors">Preview error state</button>
+            <button onClick={() => stopRun('cancelled')} className="px-3 py-1.5 rounded border border-slate-200 bg-white text-[10px] font-mono text-slate-600 hover:border-slate-300">Cancel analysis</button>
+          </div>
+        </div>
+      )}
+
+      {(runState === 'failed' || runState === 'cancelled') && (
+        <div role="alert" className={`animate-fade-in-up rounded-lg border p-5 shadow-sm ${runState === 'failed' ? 'border-rose-200 bg-rose-50' : 'border-amber-200 bg-amber-50'}`}>
+          <div className={`font-display font-black text-lg uppercase tracking-tight ${runState === 'failed' ? 'text-rose-700' : 'text-amber-700'}`}>
+            {runState === 'failed' ? 'Demo analysis interrupted' : 'Analysis cancelled'}
+          </div>
+          <p className="mt-1 text-xs text-slate-600">
+            {runState === 'failed' ? 'The local simulation stopped before results were produced. No code was executed or uploaded.' : 'This sample run was cancelled. Your selected categories are still available.'}
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button onClick={() => setAttempt(value => value + 1)} className="px-4 py-2 rounded bg-[#1B3A6B] text-white text-[11px] font-mono hover:bg-[#15305A]">Retry analysis</button>
+            <button onClick={onBack} className="px-4 py-2 rounded border border-slate-200 bg-white text-slate-600 text-[11px] font-mono hover:border-slate-300">Change categories</button>
+          </div>
+        </div>
+      )}
       {allDone && (
         <div className="animate-fade-in-up space-y-5">
           {/* Findings summary */}
@@ -1088,8 +1201,8 @@ function AnalysisScreen({ mode, task, scans, onDone }: { mode: Mode; task: Bench
 
 // ─── Screen 5: Repair Strategy ────────────────────────────────────────────────
 
-function RepairStrategyScreen({ onSelect }: { onSelect: (strategies: StrategyId[]) => void }) {
-  const [selected, setSelected] = useState<Set<StrategyId>>(new Set())
+function RepairStrategyScreen({ onSelect, initialSelected }: { onSelect: (strategies: StrategyId[]) => void; initialSelected: StrategyId[] }) {
+  const [selected, setSelected] = useState<Set<StrategyId>>(() => new Set(initialSelected))
   const strategies = STRATEGY_IDS
 
   const toggle = (id: StrategyId) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
@@ -1098,7 +1211,7 @@ function RepairStrategyScreen({ onSelect }: { onSelect: (strategies: StrategyId[
   return (
     <div className="min-h-[calc(100vh-56px)] px-4 md:px-10 py-8 max-w-5xl mx-auto">
       <h2 className="font-display font-black text-xl md:text-2xl text-[#111118] uppercase tracking-tight mb-1">Choose Repair Strategy</h2>
-      <p className="text-sm text-slate-500 mb-6 max-w-xl leading-relaxed">These repair strategies are fixed for research reproducibility. Select one or more to run. The exact information each strategy provides to the LLM is shown on each card.</p>
+      <p className="text-sm text-slate-500 mb-6 max-w-xl leading-relaxed">Select one or more deterministic demo strategies. Each card shows the sample context used to produce its local comparison result.</p>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-7">
         {strategies.map(id => {
@@ -1117,7 +1230,7 @@ function RepairStrategyScreen({ onSelect }: { onSelect: (strategies: StrategyId[
               <div className="text-[10px] font-mono text-[#1B3A6B] mb-3 uppercase tracking-wider">{s.sub}</div>
               <p className="text-xs text-slate-600 leading-relaxed mb-4">{s.desc}</p>
               <div className="rounded border border-slate-200 bg-slate-50 p-3">
-                <div className="text-[9px] font-mono text-slate-400 uppercase tracking-widest mb-1">Prompt sent to LLM</div>
+                <div className="text-[9px] font-mono text-slate-400 uppercase tracking-widest mb-1">Sample repair context</div>
                 <p className="text-[10px] font-mono text-slate-500 leading-relaxed">{s.prompt}</p>
               </div>
             </button>
@@ -1226,17 +1339,20 @@ function ComparisonScreen({ mode, strategies, onDone }: { mode: Mode; strategies
   const allDone = strategies.every(id => branchStages[id] === 'done')
 
   useEffect(() => {
+    const branchTimers: Array<ReturnType<typeof setTimeout>> = []
     strategies.forEach((id, i) => {
       const stagger = i * 300
-      const advance = (stage: BranchStage, delay: number) =>
-        setTimeout(() => setBranchStages(prev => ({ ...prev, [id]: stage })), stagger + delay)
+      const advance = (stage: BranchStage, delay: number) => {
+        branchTimers.push(setTimeout(() => setBranchStages(prev => ({ ...prev, [id]: stage })), stagger + delay))
+      }
       advance('repairing', 200)
       advance('testing', 1100)
       advance('rescanning', 2100)
       advance('reviewing', 3000)
       advance('done', 3900)
     })
-  }, [])
+    return () => branchTimers.forEach(clearTimeout)
+  }, [strategies])
 
   const res = STRATEGY_SCORES[activeTab]
   const reviewer = REVIEWER_DATA[activeTab]
@@ -1331,7 +1447,7 @@ function ComparisonScreen({ mode, strategies, onDone }: { mode: Mode; strategies
             <div className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
               <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50">
                 <span className="text-[9px] font-mono text-slate-400 uppercase tracking-widest">Re-scan Results</span>
-                <span className="ml-3 text-[9px] font-mono text-slate-400">Bandit + Semgrep run on repaired code</span>
+                <span className="ml-3 text-[9px] font-mono text-slate-400">Deterministic sample scanner output</span>
               </div>
               <div className="p-4 space-y-3">
                 {rescan.map(item => (
@@ -1380,7 +1496,7 @@ function ComparisonScreen({ mode, strategies, onDone }: { mode: Mode; strategies
               : 'border-amber-200 bg-amber-50'
             }`}>
               <div className="px-4 py-2.5 border-b border-black/[0.07] bg-black/[0.03]">
-                <span className="text-[9px] font-mono uppercase tracking-widest text-slate-500">Independent AI Reviewer</span>
+                <span className="text-[9px] font-mono uppercase tracking-widest text-slate-500">Demo Result Reviewer</span>
               </div>
               <div className="p-4">
                 <div className={`font-display font-black text-lg uppercase tracking-tight mb-2 ${
@@ -1397,7 +1513,7 @@ function ComparisonScreen({ mode, strategies, onDone }: { mode: Mode; strategies
 
             {/* LLM usage for this repair strategy */}
             <UsageRow
-              label={`LLM Usage — ${STRATEGY_META[activeTab].title}`}
+              label={`Sample Usage — ${STRATEGY_META[activeTab].title}`}
               input={STRATEGY_USAGE[activeTab].input}
               output={STRATEGY_USAGE[activeTab].output}
               total={STRATEGY_USAGE[activeTab].total}
@@ -1418,7 +1534,7 @@ function ComparisonScreen({ mode, strategies, onDone }: { mode: Mode; strategies
 
 // ─── Screen 7: Results ────────────────────────────────────────────────────────
 
-function ResultsScreen({ mode, strategies }: { mode: Mode; strategies: StrategyId[] }) {
+function ResultsScreen({ mode, strategies, onRestart }: { mode: Mode; strategies: StrategyId[]; onRestart: () => void }) {
   const active = strategies.length > 0 ? strategies : [...STRATEGY_IDS]
   const winner: StrategyId = active.reduce((best, id) => STRATEGY_SCORES[id].score > STRATEGY_SCORES[best].score ? id : best, active[0])
   const winnerScore = STRATEGY_SCORES[winner].score
@@ -1488,7 +1604,7 @@ function ResultsScreen({ mode, strategies }: { mode: Mode; strategies: StrategyI
           <span className="text-teal-600 mt-0.5">⬡</span>
           <div>
             <div className="text-[10px] font-mono text-teal-700 uppercase tracking-widest mb-1">Existing Code Audit Result</div>
-            <p className="text-xs text-teal-800 leading-relaxed">This result reflects the uploaded code and provided context. It is <strong>not included in official benchmark aggregate statistics</strong>. Functional verification confidence depends on whether test files and expected behaviour were provided.</p>
+            <p className="text-xs text-teal-800 leading-relaxed">This result reflects the uploaded code and provided context. It is <strong>shown only as a local sample and not a real benchmark result</strong>. Functional verification confidence depends on whether test files and expected behaviour were provided.</p>
           </div>
         </div>
       )}
@@ -1667,6 +1783,13 @@ function ResultsScreen({ mode, strategies }: { mode: Mode; strategies: StrategyI
         })}
       </div>
 
+      <div className="animate-fade-in-up flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-xl border border-[#1B3A6B]/20 bg-[#1B3A6B]/5 p-5">
+        <div>
+          <div className="font-display font-black text-lg text-[#111118] uppercase tracking-tight">Demo analysis complete</div>
+          <p className="text-xs text-slate-600 mt-1">These deterministic sample results demonstrate the workflow; they are not a security guarantee.</p>
+        </div>
+        <button onClick={onRestart} className="shrink-0 px-5 py-2.5 rounded bg-[#1B3A6B] text-white font-display font-bold uppercase tracking-widest text-xs hover:bg-[#15305A] transition-colors">Start New Demo</button>
+      </div>
       {/* Research metrics (benchmark only) */}
       {false && mode === 'benchmark' && (
         <div className="animate-fade-in-up space-y-4">
@@ -1739,18 +1862,53 @@ function ResultsScreen({ mode, strategies }: { mode: Mode; strategies: StrategyI
 // ─── App Root ─────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [screen, setScreen] = useState(0)
-  const [mode, setMode] = useState<Mode>('benchmark')
-  const [selectedTask, setSelectedTask] = useState<BenchmarkTask | null>(null)
-  const [customPrompt, setCustomPrompt] = useState('')
-  const [uploadedCode, setUploadedCode] = useState('')
-  const [uploadMeta, setUploadMeta] = useState<UploadMeta | null>(null)
-  const [selectedScans, setSelectedScans] = useState<ScanCategoryId[]>([])
-  const [selectedStrategies, setSelectedStrategies] = useState<StrategyId[]>(['test_feedback_v1', 'vulnerability_specific_v1', 'scanner_feedback_v1'])
+  const [initialSession] = useState(loadDemoSession)
+  const [screen, setScreen] = useState(initialSession.screen)
+  const [mode, setMode] = useState<Mode>(initialSession.mode)
+  const [selectedTask, setSelectedTask] = useState<BenchmarkTask | null>(() => BENCHMARK_TASKS.find(task => task.id === initialSession.selectedTaskId) || null)
+  const [customPrompt, setCustomPrompt] = useState(initialSession.customPrompt)
+  const [uploadedCode, setUploadedCode] = useState(initialSession.uploadedCode)
+  const [uploadMeta, setUploadMeta] = useState<UploadMeta | null>(initialSession.uploadMeta)
+  const [selectedScans, setSelectedScans] = useState<ScanCategoryId[]>(initialSession.selectedScans)
+  const [selectedStrategies, setSelectedStrategies] = useState<StrategyId[]>(initialSession.selectedStrategies)
 
-  const handleBenchmark = (task: BenchmarkTask) => { setSelectedTask(task); setMode('benchmark'); setScreen(2) }
-  const handleCustom = (prompt: string) => { setCustomPrompt(prompt); setMode('custom'); setScreen(2) }
-  const handleUpload = (code: string, meta: UploadMeta) => { setUploadedCode(code); setUploadMeta(meta); setMode('upload'); setScreen(2) }
+  useEffect(() => {
+    const session: DemoSession = {
+      screen,
+      mode,
+      selectedTaskId: selectedTask?.id || null,
+      customPrompt,
+      uploadedCode,
+      uploadMeta,
+      selectedScans,
+      selectedStrategies,
+    }
+    try {
+      window.localStorage.setItem(DEMO_SESSION_KEY, JSON.stringify(session))
+    } catch {
+      // Private browsing or storage limits must never break the local demo.
+    }
+  }, [screen, mode, selectedTask, customPrompt, uploadedCode, uploadMeta, selectedScans, selectedStrategies])
+
+  const handleBenchmark = (task: BenchmarkTask) => { setSelectedTask(task); setCustomPrompt(''); setUploadedCode(''); setUploadMeta(null); setMode('benchmark'); setScreen(2) }
+  const handleCustom = (prompt: string) => { setSelectedTask(null); setCustomPrompt(prompt); setUploadedCode(''); setUploadMeta(null); setMode('custom'); setScreen(2) }
+  const handleUpload = (code: string, meta: UploadMeta) => { setSelectedTask(null); setCustomPrompt(''); setUploadedCode(code); setUploadMeta(meta); setMode('upload'); setScreen(2) }
+  const restartDemo = () => {
+    const fresh = defaultDemoSession()
+    try {
+      window.localStorage.removeItem(DEMO_SESSION_KEY)
+    } catch {
+      // Storage access is optional for the local demo.
+    }
+    setMode(fresh.mode)
+    setSelectedTask(null)
+    setCustomPrompt('')
+    setUploadedCode('')
+    setUploadMeta(null)
+    setSelectedScans([])
+    setSelectedStrategies(fresh.selectedStrategies)
+    setScreen(1)
+  }
 
   return (
     <div className="min-h-screen bg-[#F7F5F0] text-[#111118] font-sans">
@@ -1759,11 +1917,11 @@ export default function App() {
         {screen === 0 && <LandingScreen onStart={() => setScreen(1)} />}
         {screen === 1 && <PromptSelectionScreen onBenchmark={handleBenchmark} onCustom={handleCustom} onUpload={handleUpload} />}
         {screen === 2 && <CodeGenerationScreen mode={mode} task={selectedTask} customPrompt={customPrompt} uploadedCode={uploadedCode} uploadMeta={uploadMeta} onDone={() => setScreen(3)} />}
-        {screen === 3 && <ScanSelectionScreen onDone={scans => { setSelectedScans(scans); setScreen(4) }} />}
-        {screen === 4 && <AnalysisScreen mode={mode} task={selectedTask} scans={selectedScans} onDone={() => setScreen(5)} />}
-        {screen === 5 && <RepairStrategyScreen onSelect={strats => { setSelectedStrategies(strats); setScreen(6) }} />}
+        {screen === 3 && <ScanSelectionScreen initialSelected={selectedScans} onDone={scans => { setSelectedScans(scans); setScreen(4) }} />}
+        {screen === 4 && <AnalysisScreen mode={mode} task={selectedTask} scans={selectedScans} onDone={() => setScreen(5)} onBack={() => setScreen(3)} />}
+        {screen === 5 && <RepairStrategyScreen initialSelected={selectedStrategies} onSelect={strats => { setSelectedStrategies(strats); setScreen(6) }} />}
         {screen === 6 && <ComparisonScreen mode={mode} strategies={selectedStrategies} onDone={() => setScreen(7)} />}
-        {screen === 7 && <ResultsScreen mode={mode} strategies={selectedStrategies} />}
+        {screen === 7 && <ResultsScreen mode={mode} strategies={selectedStrategies} onRestart={restartDemo} />}
       </div>
     </div>
   )
