@@ -66,6 +66,26 @@ class ArtifactStore:
     def source_path(self, upload_id: str) -> Path:
         return self._artifact_root(upload_id) / "source"
 
+    def copy_single_python_source(self, upload_id: str, destination: Path) -> Path:
+        artifact_root = self._artifact_root(upload_id).resolve()
+        source_root = self.source_path(upload_id).resolve()
+        if not source_root.is_relative_to(self.root) or not source_root.is_relative_to(
+            artifact_root
+        ):
+            raise ValueError("artifact_path_escape")
+        files = [item for item in source_root.rglob("*") if item.is_file()]
+        if len(files) != 1 or files[0].suffix.lower() != ".py":
+            raise ValueError("single_python_file_required")
+        source_file = files[0].resolve()
+        if not source_file.is_relative_to(source_root) or not source_file.is_relative_to(
+            self.root
+        ):
+            raise ValueError("artifact_path_escape")
+        destination.mkdir(parents=True, exist_ok=False)
+        output = destination / source_file.name
+        shutil.copyfile(source_file, output)
+        return output
+
     def store(
         self,
         source: ValidatedSource,
