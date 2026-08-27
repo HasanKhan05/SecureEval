@@ -108,29 +108,61 @@ export function useLiveBenchmark(
       setReport(null);
       setProgress(null);
       setBusy(true);
+
+      let created;
       try {
-        const created = await client.createRun({
+        created = await client.createRun({
           mode: "benchmark",
           task_id: taskId,
           scan_categories: scanCategories,
           strategies: ["vulnerability_specific_v1"],
         });
-        if (generation.current !== operation) return null;
-        setRunId(created.run_id);
-        setProgress({
-          run_id: created.run_id,
-          status: created.status,
-          stage: "queued",
-          completed_stages: [],
-          current_strategy: null,
-        });
-        await client.startRun(created.run_id);
-        return created.run_id;
       } catch (caught) {
-        setError(errorMessage(caught));
-        setBusy(false);
+        if (generation.current === operation) {
+          setError(errorMessage(caught));
+          setBusy(false);
+        }
         return null;
       }
+      if (generation.current !== operation) return null;
+
+      try {
+        await client.startRun(created.run_id);
+      } catch (caught) {
+        try {
+          const reconciled = await client.getRun(created.run_id);
+          if (
+            generation.current === operation &&
+            (reconciled.status === "running" ||
+              reconciled.status === "completed")
+          ) {
+            setRunId(created.run_id);
+            setError(null);
+            return created.run_id;
+          }
+          if (reconciled.status === "queued") {
+            await client.cancelRun(created.run_id);
+          }
+        } catch {
+          // Preserve the original start error when reconciliation is unavailable.
+        }
+        if (generation.current === operation) {
+          setError(`The run could not be started. ${errorMessage(caught)}`);
+          setBusy(false);
+        }
+        return null;
+      }
+
+      if (generation.current !== operation) return null;
+      setRunId(created.run_id);
+      setProgress({
+        run_id: created.run_id,
+        status: "running",
+        stage: "baseline_testing",
+        completed_stages: [],
+        current_strategy: null,
+      });
+      return created.run_id;
     },
     [client],
   );

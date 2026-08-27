@@ -113,7 +113,36 @@ try {
     throw new Error('T-01 API failure fell back to simulated analysis.')
   }
 
-  console.log('Real T-01 workflow, refresh persistence, and API failure state verified.')
+  await page.unroute('http://127.0.0.1:8000/api/v1/**')
+  await page.route('http://127.0.0.1:8000/api/v1/runs/*/start', route =>
+    route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        error: {
+          code: 'tool_error',
+          message: 'Injected start failure.',
+          request_id: 'browser-regression',
+        },
+      }),
+    }),
+  )
+  await page.evaluate(() => localStorage.clear())
+  await page.goto('http://127.0.0.1:8443/', { waitUntil: 'networkidle' })
+  await page.getByRole('button', { name: /Start Demo/ }).click()
+  await page.getByText('User Login Service', { exact: true }).click()
+  await page.getByRole('button', { name: /Run Benchmark Task/ }).click()
+  await page.getByRole('button', { name: /Generate Code/ }).click()
+  await page.getByRole('button', { name: /Configure Security Scan/ }).click()
+  await page.getByText('Injection', { exact: true }).first().click()
+  await page.getByRole('button', { name: /Run Security Analysis/ }).click()
+  await page.getByRole('alert').getByText(/could not be started/i).waitFor({
+    timeout: 8_000,
+  })
+  await page.waitForTimeout(1_000)
+  await page.getByRole('alert').getByText(/could not be started/i).waitFor()
+
+  console.log('Real T-01 workflow, refresh persistence, API creation failure, and start failure verified.')
 } finally {
   await browser.close()
   await server.close()
