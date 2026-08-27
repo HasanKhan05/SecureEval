@@ -1,10 +1,30 @@
 # SecureEval
 
-SecureEval is an interactive local portfolio demo for comparing security-oriented code-repair strategies. It preserves the supplied Figma design and uses deterministic sample data—no API keys, external services, or code execution are required.
+SecureEval is a functional local AI/cybersecurity portfolio project for comparing code-repair strategies. It preserves the supplied Figma interface and connects the **T-01 User Login Service** benchmark to a real local evaluation pipeline:
 
-## Run locally
+- Pytest functional tests
+- Bandit and Semgrep static analysis
+- Optional OpenAI-compatible structured repair calls
+- Deterministic local repair fallback when no API key is configured
+- Deterministic scoring, strategy comparison, and SQLite result persistence
 
-Requirements: Node.js 20+ and Corepack.
+The displayed evidence describes one controlled sample run. It is not a security certification or guarantee.
+
+## Quick start
+
+Requirements: Node.js 22 with Corepack and Python 3.14.
+
+Terminal 1:
+
+```powershell
+cd backend
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r pylock.toml
+.\.venv\Scripts\python.exe -m pip install --no-deps --no-build-isolation -e .
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
+```
+
+Terminal 2:
 
 ```powershell
 cd frontend
@@ -12,16 +32,12 @@ corepack pnpm install --frozen-lockfile
 corepack pnpm dev
 ```
 
-Open the local URL printed by Vite. The demo supports Benchmark, Custom Prompt, and Upload Code modes, including validation, progress, cancellation, retry, comparison results, and refresh persistence.
+Open `http://localhost:8443`, choose **Benchmark Mode**, select **User Login Service (T-01)**, and continue through scanning, repair selection, comparison, and persisted results.
 
-## Important
+No API key is required. Without one, repaired results are explicitly labeled `local_fallback`.
 
-Results, scanner findings, token/cost/latency values, and reviewer explanations are deterministic demo fixtures. They demonstrate the product workflow and do not represent real security testing or a security guarantee. Uploaded code remains in the browser and is not executed or sent to an external service.
+## Current scope
 
-To verify a production build:
+T-01 is the real backend-connected benchmark slice. The remaining benchmark tasks, Custom Prompt Mode, and Upload Code Mode preserve the interactive portfolio UI but currently use demo data. Uploaded code in those demo flows is not executed.
 
-```powershell
-cd frontend
-corepack pnpm exec tsc --noEmit
-corepack pnpm build
-```
+See [docs/LOCAL_DEVELOPMENT.md](docs/LOCAL_DEVELOPMENT.md) for optional LLM settings and verification commands.
