@@ -1,5 +1,4 @@
 import os
-import shutil
 from collections.abc import Iterator
 from typing import Annotated
 from contextlib import asynccontextmanager
@@ -15,7 +14,8 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.database import create_database, upgrade_database
 from app.llm.client import LlmClient
 from app.reports import load_report
-from app.runner import RunnerDependencies, execute_baseline, execute_repairs
+from app.runner import execute_baseline, execute_repairs
+from app.runner_support import RunnerDependencies, cleanup_run
 from app.errors import (
     APIError,
     api_error_handler,
@@ -114,6 +114,7 @@ def create_app(
                 os.getenv("SECUREEVAL_LLM_OUTPUT_PRICE_PER_MILLION", "0")
             ),
         ),
+        artifact_store=artifact_store,
     )
     runner_dependencies.work_root.mkdir(parents=True, exist_ok=True)
 
@@ -246,10 +247,7 @@ def create_app(
     @application.post("/api/v1/runs/{run_id}/cancel", response_model=RunResponse)
     def cancel(run_id: RunId, session: Session = Depends(_session_dependency)) -> RunResponse:
         response = cancel_run(session, run_id)
-        shutil.rmtree(
-            runner_dependencies.work_root / run_id,
-            ignore_errors=True,
-        )
+        cleanup_run(runner_dependencies, run_id)
         return response
 
     return application

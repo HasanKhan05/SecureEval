@@ -2,96 +2,28 @@ from __future__ import annotations
 
 import json
 import shutil
-from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
 
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.enums import JobStatus, Mode, StrategyId
-from app.llm.client import LlmClient
 from app.models import RunRecord
 from app.repairs import repair_source
 from app.reports import build_report, save_report
-from app.schemas import Finding, LlmUsage, StrategyResult, TestExecution, ToolStatus
+from app.runner_support import (
+    RunnerDependencies,
+    cleanup_run,
+    combined_scan_status,
+    fail_run,
+    progress_payload,
+    run_cancelled,
+    set_stage,
+)
+from app.schemas import Finding, LlmUsage, StrategyResult, TestExecution
 from app.scoring import EvidenceSnapshot, score_strategy
 from app.tools.bandit import run_bandit
 from app.tools.pytest_runner import run_pytest
 from app.tools.semgrep import run_semgrep
-
-
-@dataclass(frozen=True)
-class RunnerDependencies:
-    fixture_root: Path
-    work_root: Path
-    tool_timeout_seconds: float
-    llm_client: LlmClient
-
-
-def _now() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
-
-
-def _progress(record: RunRecord) -> dict[str, object]:
-    return json.loads(record.progress_json or "{}")
-
-
-def _scan_status(*statuses: ToolStatus) -> ToolStatus:
-    if all(status == "completed" for status in statuses):
-        return "completed"
-    for status in ("cancelled", "timeout", "unavailable"):
-        if status in statuses:
-            return status
-    return "failed"
-
-
-def _set_stage(
-    session: Session,
-    record: RunRecord,
-    stage: str,
-    *,
-    completed_stage: str | None = None,
-    extra: dict[str, object] | None = None,
-) -> None:
-    payload = _progress(record)
-    completed = list(payload.get("completed_stages", []))
-    if completed_stage and completed_stage not in completed:
-        completed.append(completed_stage)
-    payload["completed_stages"] = completed
-    if extra:
-        payload.update(extra)
-    record.stage = stage
-    record.progress_json = json.dumps(payload, separators=(",", ":"))
-    record.updated_at = _now()
-    session.commit()
-
-
-def _fail(
-    session_factory: sessionmaker[Session],
-    run_id: str,
-    code: str,
-    message: str,
-) -> None:
-    with session_factory() as session:
-        record = session.get(RunRecord, run_id)
-        if record is None or record.status == JobStatus.CANCELLED.value:
-            return
-        record.status = JobStatus.FAILED.value
-        record.stage = "failed"
-        record.failure_code = code
-        record.failure_message = message[:256]
-        record.updated_at = _now()
-        for attempt in record.attempts:
-            if attempt.status != JobStatus.COMPLETED.value:
-                attempt.status = JobStatus.FAILED.value
-                attempt.failure_code = code
-        session.commit()
-
-
-def _cancelled(session: Session, run_id: str) -> bool:
-    session.expire_all()
-    record = session.get(RunRecord, run_id)
-    return record is None or record.status == JobStatus.CANCELLED.value
 
 
 def execute_baseline(
@@ -113,14 +45,14 @@ def execute_baseline(
             if record is None or record.status != JobStatus.RUNNING.value:
                 return
             selected_categories = set(json.loads(record.scan_categories_json))
-            _set_stage(session, record, "baseline_testing")
+            set_stage(session, record, "baseline_testing")
         tests = run_pytest(tests_path, source_path, dependencies.tool_timeout_seconds)
 
         with session_factory() as session:
-            if _cancelled(session, run_id):
+            if run_cancelled(session, run_id):
                 return
             record = session.get(RunRecord, run_id)
-            _set_stage(
+            set_stage(
                 session,
                 record,
                 "baseline_scanning",
@@ -130,7 +62,7 @@ def execute_baseline(
         semgrep = run_semgrep(source_path, dependencies.tool_timeout_seconds)
         if tests.status != "completed" or bandit.status != "completed" or semgrep.status != "completed":
             raise RuntimeError("A baseline analysis tool did not complete.")
-        scan_status = _scan_status(bandit.status, semgrep.status)
+        scan_status = combined_scan_status(bandit.status, semgrep.status)
         findings = [
             item
             for item in [*bandit.findings, *semgrep.findings]
@@ -138,12 +70,12 @@ def execute_baseline(
         ]
 
         with session_factory() as session:
-            if _cancelled(session, run_id):
+            if run_cancelled(session, run_id):
                 return
             record = session.get(RunRecord, run_id)
             for attempt in record.attempts:
                 attempt.status = JobStatus.QUEUED.value
-            _set_stage(
+            set_stage(
                 session,
                 record,
                 "awaiting_strategy",
@@ -159,7 +91,7 @@ def execute_baseline(
                 },
             )
     except Exception as exc:
-        _fail(session_factory, run_id, "baseline_failed", str(exc))
+        fail_run(session_factory, run_id, "baseline_failed", str(exc))
 
 
 def execute_repairs(
@@ -173,7 +105,7 @@ def execute_repairs(
             record = session.get(RunRecord, run_id)
             if record is None or record.status != JobStatus.RUNNING.value:
                 return
-            progress = _progress(record)
+            progress = progress_payload(record)
             baseline_source = str(progress["baseline_source"])
             baseline_findings = [
                 Finding.model_validate(item)
@@ -192,10 +124,10 @@ def execute_repairs(
         results: list[StrategyResult] = []
         for attempt_id, strategy_value in attempts:
             with session_factory() as session:
-                if _cancelled(session, run_id):
+                if run_cancelled(session, run_id):
                     return
                 record = session.get(RunRecord, run_id)
-                _set_stage(
+                set_stage(
                     session,
                     record,
                     "repairing",
@@ -220,10 +152,10 @@ def execute_repairs(
             source_file.write_text(repair.value.repaired_code, encoding="utf-8")
 
             with session_factory() as session:
-                if _cancelled(session, run_id):
+                if run_cancelled(session, run_id):
                     return
                 record = session.get(RunRecord, run_id)
-                _set_stage(
+                set_stage(
                     session,
                     record,
                     "repaired_testing",
@@ -234,10 +166,10 @@ def execute_repairs(
             )
 
             with session_factory() as session:
-                if _cancelled(session, run_id):
+                if run_cancelled(session, run_id):
                     return
                 record = session.get(RunRecord, run_id)
-                _set_stage(
+                set_stage(
                     session,
                     record,
                     "repaired_scanning",
@@ -250,7 +182,7 @@ def execute_repairs(
                 for item in [*bandit.findings, *semgrep.findings]
                 if item.category.value in selected_categories
             ]
-            scan_status = _scan_status(bandit.status, semgrep.status)
+            scan_status = combined_scan_status(bandit.status, semgrep.status)
             metrics = score_strategy(
                 EvidenceSnapshot(
                     len(baseline_findings),
@@ -307,16 +239,16 @@ def execute_repairs(
                 session.commit()
 
         with session_factory() as session:
-            if _cancelled(session, run_id):
+            if run_cancelled(session, run_id):
                 return
             record = session.get(RunRecord, run_id)
-            _set_stage(
+            set_stage(
                 session,
                 record,
                 "reviewing",
                 completed_stage="repaired_scanning",
             )
-            _set_stage(session, record, "reporting", completed_stage="reviewing")
+            set_stage(session, record, "reporting", completed_stage="reviewing")
             report = build_report(
                 run_id=run_id,
                 mode=mode,
@@ -338,7 +270,7 @@ def execute_repairs(
             )
             save_report(session, report)
     except Exception as exc:
-        _fail(session_factory, run_id, "repair_pipeline_failed", str(exc))
+        fail_run(session_factory, run_id, "repair_pipeline_failed", str(exc))
     finally:
         with session_factory() as session:
             record = session.get(RunRecord, run_id)
@@ -348,4 +280,4 @@ def execute_repairs(
                 JobStatus.CANCELLED.value,
             }
         if terminal:
-            shutil.rmtree(run_work, ignore_errors=True)
+            cleanup_run(dependencies, run_id)

@@ -53,6 +53,9 @@ def test_benchmark_run_completes_with_real_evidence(
     }
     assert report["baseline_scan_status"] == "completed"
     assert report["strategy_results"][0]["repaired_scan_status"] == "completed"
+    assert report["evaluation_kind"] == "benchmark_full"
+    assert report["baseline_syntax"] is None
+    assert report["strategy_results"][0]["metrics"]["score_basis"] == "full"
 
     with Session(create_engine(database_url)) as session:
         record = session.get(RunRecord, run_id)
