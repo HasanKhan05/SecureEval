@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy import delete
@@ -12,7 +13,9 @@ from app.models import (
     RunReportRecord,
     TestExecutionRecord,
 )
-from app.schemas import Finding, RunReport, TestExecution
+from app.enums import JobStatus, Mode
+from app.scoring import METRIC_POLICY_SUMMARY, RankingInput, rank_strategies
+from app.schemas import Finding, RunReport, StrategyResult, TestExecution
 
 
 def _new_id(prefix: str) -> str:
@@ -135,3 +138,54 @@ def load_report(session: Session, run_id: str) -> RunReport:
     if record is None:
         raise APIError(404, "report_not_found", "Run report not found.")
     return RunReport.model_validate_json(record.report_json)
+
+
+def build_report(
+    *,
+    run_id: str,
+    mode: Mode,
+    baseline_source: str,
+    baseline_findings: list[Finding],
+    baseline_tests: TestExecution,
+    strategy_results: list[StrategyResult],
+    explanation: str,
+    explanation_source: str,
+    limitations: list[str],
+    created_at: datetime,
+) -> RunReport:
+    eligible = [
+        item
+        for item in strategy_results
+        if item.status == JobStatus.COMPLETED
+        and item.repaired_tests.status == "completed"
+    ]
+    ranking = rank_strategies(
+        [
+            RankingInput(
+                attempt_id=item.attempt_id,
+                strategy_id=item.strategy_id,
+                metrics=item.metrics,
+                cost_usd=item.llm_usage.estimated_cost_usd,
+                token_count=(
+                    item.llm_usage.input_tokens + item.llm_usage.output_tokens
+                ),
+                latency_ms=item.llm_usage.latency_ms,
+            )
+            for item in eligible
+        ]
+    )
+    return RunReport(
+        run_id=run_id,
+        status=JobStatus.COMPLETED,
+        mode=mode,
+        baseline_source=baseline_source,
+        baseline_findings=baseline_findings,
+        baseline_tests=baseline_tests,
+        strategy_results=strategy_results,
+        best_overall=ranking.best_overall,
+        best_efficiency=ranking.best_efficiency,
+        explanation=explanation,
+        explanation_source=explanation_source,
+        limitations=[*limitations, METRIC_POLICY_SUMMARY],
+        created_at=created_at,
+    )
