@@ -27,6 +27,15 @@ class EvidenceSnapshot:
 
 
 @dataclass(frozen=True)
+class StaticEvidenceSnapshot:
+    findings_count: int
+    scan_status: ToolStatus
+    syntax_valid: bool
+    cost_usd: float = 0
+    latency_ms: int = 0
+
+
+@dataclass(frozen=True)
 class RankingInput:
     attempt_id: str
     strategy_id: StrategyId
@@ -92,6 +101,46 @@ def score_strategy(
         security_score=_rounded(security),
         functionality_score=_rounded(functionality),
         overall_score=_rounded(overall),
+        efficiency_score=_rounded(efficiency),
+    )
+
+
+def score_static_strategy(
+    baseline: StaticEvidenceSnapshot,
+    repaired: StaticEvidenceSnapshot,
+) -> StrategyMetrics:
+    if (
+        baseline.scan_status != "completed"
+        or repaired.scan_status != "completed"
+        or not baseline.syntax_valid
+        or not repaired.syntax_valid
+    ):
+        return StrategyMetrics(
+            score_basis="static_only",
+            findings_before=baseline.findings_count,
+            findings_after=repaired.findings_count,
+            fixed_count=0,
+            security_score=0,
+            functionality_score=None,
+            overall_score=0,
+            efficiency_score=0,
+        )
+
+    fixed = max(0, baseline.findings_count - repaired.findings_count)
+    security = (
+        100
+        if baseline.findings_count == repaired.findings_count == 0
+        else 100 * fixed / max(1, baseline.findings_count)
+    )
+    efficiency = (security / 100) / max(repaired.cost_usd, 0.01)
+    return StrategyMetrics(
+        score_basis="static_only",
+        findings_before=baseline.findings_count,
+        findings_after=repaired.findings_count,
+        fixed_count=fixed,
+        security_score=_rounded(security),
+        functionality_score=None,
+        overall_score=_rounded(security),
         efficiency_score=_rounded(efficiency),
     )
 

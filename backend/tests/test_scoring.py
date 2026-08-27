@@ -2,7 +2,9 @@ from app.enums import StrategyId
 from app.scoring import (
     EvidenceSnapshot,
     RankingInput,
+    StaticEvidenceSnapshot,
     rank_strategies,
+    score_static_strategy,
     score_strategy,
 )
 
@@ -132,3 +134,15 @@ def test_best_overall_prioritizes_security_before_blended_score() -> None:
 
     assert higher_security.overall_score < higher_blended.overall_score
     assert ranking.best_overall == StrategyId.SCANNER_FEEDBACK
+
+
+def test_static_scoring_does_not_use_functional_test_evidence() -> None:
+    metrics = score_static_strategy(
+        StaticEvidenceSnapshot(1, "completed", True),
+        StaticEvidenceSnapshot(0, "completed", True, cost_usd=0.02),
+    )
+
+    assert metrics.score_basis == "static_only"
+    assert metrics.functionality_score is None
+    assert metrics.overall_score == metrics.security_score == 100
+    assert metrics.efficiency_score == 50

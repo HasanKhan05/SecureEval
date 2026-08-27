@@ -4,6 +4,7 @@ from app.enums import JobStatus, Mode, StrategyId
 from app.reports import build_report
 from app.schemas import (
     LlmUsage,
+    SyntaxValidation,
     StrategyMetrics,
     StrategyResult,
     TestExecution,
@@ -88,6 +89,81 @@ def test_build_report_excludes_unavailable_scanner_evidence_from_winners() -> No
         explanation="No ranking may be inferred from unavailable evidence.",
         explanation_source="local_fallback",
         limitations=["Scanner evidence was unavailable."],
+        created_at=datetime(2026, 8, 27, tzinfo=UTC),
+    )
+
+    assert report.best_overall is None
+    assert report.best_efficiency is None
+
+
+def test_upload_static_report_ranks_only_valid_syntax_with_completed_rescan() -> None:
+    valid = _strategy(StrategyId.SCANNER_FEEDBACK, 100)
+    valid.repaired_tests = TestExecution(
+        status="unavailable",
+        passed=0,
+        failed=0,
+        skipped=0,
+        duration_ms=0,
+        output="Tests not executed.",
+        output_truncated=False,
+    )
+    valid.repaired_syntax = SyntaxValidation(
+        status="completed", valid=True, message="Syntax valid."
+    )
+    valid.metrics.functionality_score = None
+    valid.metrics.score_basis = "static_only"
+
+    report = build_report(
+        run_id="run_" + "c" * 32,
+        mode=Mode.UPLOAD,
+        evaluation_kind="upload_static",
+        baseline_source="print('baseline')\n",
+        baseline_findings=[],
+        baseline_syntax=SyntaxValidation(
+            status="completed", valid=True, message="Syntax valid."
+        ),
+        baseline_tests=valid.repaired_tests,
+        strategy_results=[valid],
+        explanation="Static evidence only.",
+        explanation_source="local_fallback",
+        limitations=["Functional tests were not executed."],
+        created_at=datetime(2026, 8, 27, tzinfo=UTC),
+    )
+
+    assert report.best_overall == StrategyId.SCANNER_FEEDBACK
+    assert report.best_efficiency == StrategyId.SCANNER_FEEDBACK
+    assert report.evaluation_kind == "upload_static"
+    assert not any("portfolio-metrics-v1" in item for item in report.limitations)
+
+
+def test_upload_static_report_excludes_invalid_repaired_syntax() -> None:
+    invalid = _strategy(StrategyId.SCANNER_FEEDBACK, 100)
+    invalid.repaired_tests = TestExecution(
+        status="unavailable",
+        passed=0,
+        failed=0,
+        skipped=0,
+        duration_ms=0,
+        output="Tests not executed.",
+        output_truncated=False,
+    )
+    invalid.repaired_syntax = SyntaxValidation(
+        status="failed", valid=False, line=1, column=1, message="invalid syntax"
+    )
+    invalid.metrics.functionality_score = None
+    invalid.metrics.score_basis = "static_only"
+
+    report = build_report(
+        run_id="run_" + "d" * 32,
+        mode=Mode.UPLOAD,
+        evaluation_kind="upload_static",
+        baseline_source="print('baseline')\n",
+        baseline_findings=[],
+        baseline_tests=invalid.repaired_tests,
+        strategy_results=[invalid],
+        explanation="Static evidence only.",
+        explanation_source="local_fallback",
+        limitations=["Functional tests were not executed."],
         created_at=datetime(2026, 8, 27, tzinfo=UTC),
     )
 

@@ -15,7 +15,14 @@ from app.models import (
 )
 from app.enums import JobStatus, Mode
 from app.scoring import METRIC_POLICY_SUMMARY, RankingInput, rank_strategies
-from app.schemas import Finding, RunReport, StrategyResult, TestExecution
+from app.schemas import (
+    EvaluationKind,
+    Finding,
+    RunReport,
+    StrategyResult,
+    SyntaxValidation,
+    TestExecution,
+)
 
 
 def _new_id(prefix: str) -> str:
@@ -151,13 +158,21 @@ def load_report(session: Session, run_id: str) -> RunReport:
     return RunReport.model_validate_json(record.report_json)
 
 
+STATIC_METRIC_POLICY_SUMMARY = (
+    "upload-static-metrics-v1: security and overall scores use completed scanner "
+    "evidence and valid syntax only; functional tests were not executed."
+)
+
+
 def build_report(
     *,
     run_id: str,
     mode: Mode,
+    evaluation_kind: EvaluationKind = "benchmark_full",
     baseline_source: str,
     baseline_findings: list[Finding],
     baseline_scan_status: str = "completed",
+    baseline_syntax: SyntaxValidation | None = None,
     baseline_tests: TestExecution,
     strategy_results: list[StrategyResult],
     explanation: str,
@@ -165,13 +180,24 @@ def build_report(
     limitations: list[str],
     created_at: datetime,
 ) -> RunReport:
-    eligible = [
-        item
-        for item in strategy_results
-        if item.status == JobStatus.COMPLETED
-        and item.repaired_tests.status == "completed"
-        and item.repaired_scan_status == "completed"
-    ]
+    if evaluation_kind == "benchmark_full":
+        eligible = [
+            item
+            for item in strategy_results
+            if item.status == JobStatus.COMPLETED
+            and item.repaired_tests.status == "completed"
+            and item.repaired_scan_status == "completed"
+        ]
+    else:
+        eligible = [
+            item
+            for item in strategy_results
+            if item.status == JobStatus.COMPLETED
+            and item.repaired_scan_status == "completed"
+            and item.repaired_syntax is not None
+            and item.repaired_syntax.status == "completed"
+            and item.repaired_syntax.valid
+        ]
     ranking = rank_strategies(
         [
             RankingInput(
@@ -191,15 +217,22 @@ def build_report(
         run_id=run_id,
         status=JobStatus.COMPLETED,
         mode=mode,
+        evaluation_kind=evaluation_kind,
         baseline_source=baseline_source,
         baseline_findings=baseline_findings,
         baseline_scan_status=baseline_scan_status,
+        baseline_syntax=baseline_syntax,
         baseline_tests=baseline_tests,
         strategy_results=strategy_results,
         best_overall=ranking.best_overall,
         best_efficiency=ranking.best_efficiency,
         explanation=explanation,
         explanation_source=explanation_source,
-        limitations=[*limitations, METRIC_POLICY_SUMMARY],
+        limitations=[
+            *limitations,
+            METRIC_POLICY_SUMMARY
+            if evaluation_kind == "benchmark_full"
+            else STATIC_METRIC_POLICY_SUMMARY,
+        ],
         created_at=created_at,
     )

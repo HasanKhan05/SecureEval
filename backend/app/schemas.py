@@ -95,6 +95,8 @@ class UploadReceipt(BaseModel):
     expires_at: datetime
 
 ToolStatus = Literal["completed", "failed", "timeout", "unavailable", "cancelled"]
+EvaluationKind = Literal["benchmark_full", "upload_static"]
+ScoreBasis = Literal["full", "static_only"]
 RunStage = Literal[
     "queued",
     "baseline_testing",
@@ -109,6 +111,14 @@ RunStage = Literal[
     "failed",
     "cancelled",
 ]
+
+
+class SyntaxValidation(StrictModel):
+    status: Literal["completed", "failed"]
+    valid: bool
+    line: int | None = Field(default=None, ge=1)
+    column: int | None = Field(default=None, ge=1)
+    message: str = Field(max_length=1000)
 
 
 class Finding(StrictModel):
@@ -147,11 +157,12 @@ class LlmUsage(StrictModel):
 
 
 class StrategyMetrics(StrictModel):
+    score_basis: ScoreBasis = "full"
     findings_before: int = Field(ge=0)
     findings_after: int = Field(ge=0)
     fixed_count: int = Field(ge=0)
     security_score: float = Field(ge=0, le=100)
-    functionality_score: float = Field(ge=0, le=100)
+    functionality_score: float | None = Field(default=None, ge=0, le=100)
     overall_score: float = Field(ge=0, le=100)
     efficiency_score: float = Field(ge=0, le=100)
 
@@ -165,6 +176,7 @@ class StrategyResult(StrictModel):
     limitations: list[str] = Field(max_length=20)
     repaired_findings: list[Finding]
     repaired_scan_status: ToolStatus = "completed"
+    repaired_syntax: SyntaxValidation | None = None
     repaired_tests: TestExecution
     llm_usage: LlmUsage
     review: str = Field(min_length=1, max_length=8000)
@@ -202,9 +214,11 @@ class RunReport(StrictModel):
     run_id: str = Field(min_length=8, max_length=64)
     status: JobStatus
     mode: Mode
+    evaluation_kind: EvaluationKind = "benchmark_full"
     baseline_source: str = Field(max_length=200000)
     baseline_findings: list[Finding]
     baseline_scan_status: ToolStatus = "completed"
+    baseline_syntax: SyntaxValidation | None = None
     baseline_tests: TestExecution
     strategy_results: list[StrategyResult]
     best_overall: StrategyId | None
