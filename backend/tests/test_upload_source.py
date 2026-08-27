@@ -24,7 +24,7 @@ def test_load_uploaded_python_copies_one_file_without_importing(
     artifact = artifact_store.store(source, UploadPurpose.UPLOADED_CODE)
 
     output, text = load_uploaded_python(
-        artifact_store, artifact.upload_id, tmp_path / "work" / "source"
+        artifact_store, artifact.upload_id, tmp_path / "work" / "source", tmp_path / "work"
     )
 
     assert output.name == "audit.py"
@@ -48,7 +48,7 @@ def test_load_uploaded_python_rejects_multi_file_archive(
 
     with pytest.raises(UploadSourceError, match="single_python_file_required"):
         load_uploaded_python(
-            artifact_store, artifact.upload_id, tmp_path / "work" / "source"
+            artifact_store, artifact.upload_id, tmp_path / "work" / "source", tmp_path / "work"
         )
 
 
@@ -74,6 +74,7 @@ def test_load_uploaded_python_rejects_missing_artifact(
             artifact_store,
             "upload_" + "0" * 32,
             tmp_path / "work" / "source",
+            tmp_path / "work",
         )
 
 
@@ -83,7 +84,7 @@ def test_load_uploaded_python_rejects_non_python_source(
     upload_id = _store_source(artifact_store, "notes.txt", b"plain text\n")
 
     with pytest.raises(UploadSourceError, match="single_python_file_required"):
-        load_uploaded_python(artifact_store, upload_id, tmp_path / "work" / "source")
+        load_uploaded_python(artifact_store, upload_id, tmp_path / "work" / "source", tmp_path / "work")
 
 
 def test_load_uploaded_python_rejects_invalid_utf8(
@@ -92,7 +93,7 @@ def test_load_uploaded_python_rejects_invalid_utf8(
     upload_id = _store_source(artifact_store, "invalid.py", b"x = \xff\n")
 
     with pytest.raises(UploadSourceError, match="unsupported_encoding"):
-        load_uploaded_python(artifact_store, upload_id, tmp_path / "work" / "source")
+        load_uploaded_python(artifact_store, upload_id, tmp_path / "work" / "source", tmp_path / "work")
 
 
 def test_load_uploaded_python_rejects_path_escape(
@@ -113,4 +114,55 @@ def test_load_uploaded_python_rejects_path_escape(
             escaped_store,
             "upload_" + "0" * 32,
             tmp_path / "work" / "source",
+            tmp_path / "work",
         )
+
+def test_load_uploaded_python_rejects_absolute_destination_outside_trusted_root(
+    artifact_store: ArtifactStore, tmp_path: Path
+) -> None:
+    upload_id = _store_source(artifact_store, "safe.py", b"x = 1\n")
+    trusted_root = tmp_path / "trusted"
+    destination = tmp_path / "outside" / "source"
+
+    with pytest.raises(UploadSourceError, match="destination_path_escape"):
+        load_uploaded_python(artifact_store, upload_id, destination, trusted_root)
+
+    assert not destination.exists()
+
+
+def test_load_uploaded_python_rejects_resolved_parent_escape(
+    artifact_store: ArtifactStore, tmp_path: Path
+) -> None:
+    upload_id = _store_source(artifact_store, "safe.py", b"x = 1\n")
+    trusted_root = tmp_path / "trusted"
+    destination = trusted_root / ".." / "outside" / "source"
+
+    with pytest.raises(UploadSourceError, match="destination_path_escape"):
+        load_uploaded_python(artifact_store, upload_id, destination, trusted_root)
+
+    assert not (tmp_path / "outside").exists()
+
+
+def test_load_uploaded_python_rejects_symlinked_destination_parent(
+    artifact_store: ArtifactStore, tmp_path: Path
+) -> None:
+    upload_id = _store_source(artifact_store, "safe.py", b"x = 1\n")
+    trusted_root = tmp_path / "trusted"
+    trusted_root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    linked_parent = trusted_root / "linked"
+    try:
+        linked_parent.symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"symlinks unavailable: {exc}")
+
+    with pytest.raises(UploadSourceError, match="destination_path_escape"):
+        load_uploaded_python(
+            artifact_store,
+            upload_id,
+            linked_parent / "source",
+            trusted_root,
+        )
+
+    assert not (outside / "source").exists()

@@ -66,7 +66,13 @@ class ArtifactStore:
     def source_path(self, upload_id: str) -> Path:
         return self._artifact_root(upload_id) / "source"
 
-    def copy_single_python_source(self, upload_id: str, destination: Path) -> Path:
+    def copy_single_python_source(
+        self, upload_id: str, destination: Path, trusted_root: Path
+    ) -> Path:
+        trusted_root = trusted_root.resolve()
+        destination = destination.resolve(strict=False)
+        if not destination.is_relative_to(trusted_root):
+            raise ValueError("destination_path_escape")
         artifact_root = self._artifact_root(upload_id).resolve()
         source_root = self.source_path(upload_id).resolve()
         if not source_root.is_relative_to(self.root) or not source_root.is_relative_to(
@@ -82,6 +88,9 @@ class ArtifactStore:
         ):
             raise ValueError("artifact_path_escape")
         destination.mkdir(parents=True, exist_ok=False)
+        destination = destination.resolve()
+        if not destination.is_relative_to(trusted_root):
+            raise ValueError("destination_path_escape")
         output = destination / source_file.name
         shutil.copyfile(source_file, output)
         return output

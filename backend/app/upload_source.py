@@ -12,10 +12,13 @@ class UploadSourceError(ValueError):
 
 
 def load_uploaded_python(
-    store: ArtifactStore, upload_id: str, destination: Path
+    store: ArtifactStore,
+    upload_id: str,
+    destination: Path,
+    trusted_root: Path,
 ) -> tuple[Path, str]:
     try:
-        output = store.copy_single_python_source(upload_id, destination)
+        output = store.copy_single_python_source(upload_id, destination, trusted_root)
     except Exception as exc:
         raise UploadSourceError(str(exc) or exc.__class__.__name__) from exc
 
