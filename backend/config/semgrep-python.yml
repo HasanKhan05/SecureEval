@@ -1,0 +1,11 @@
+rules:
+  - id: secureeval.python.sql-injection
+    languages: [python]
+    severity: WARNING
+    message: SQL query execution uses a formatted string and may allow SQL injection.
+    metadata:
+      category: injection
+    pattern: |
+      $QUERY = f"..."
+      ...
+      $CONNECTION.execute($QUERY)
