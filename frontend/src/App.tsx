@@ -22,7 +22,7 @@ interface BenchmarkTask {
   domain: string; complexity: 'low' | 'medium' | 'high'
 }
 
-interface DemoSession {
+export interface DemoSession {
   screen: number
   mode: Mode
   selectedTaskId: string | null
@@ -33,6 +33,23 @@ interface DemoSession {
   selectedStrategies: StrategyId[]
   runId: string | null
   liveRequested: boolean
+}
+
+export type PersistedDemoSession = Omit<DemoSession, 'uploadedCode'>
+type RestoredDemoSession = PersistedDemoSession & { uploadedCode: '' }
+
+export function toPersistedDemoSession(session: DemoSession): PersistedDemoSession {
+  return {
+    screen: session.screen,
+    mode: session.mode,
+    selectedTaskId: session.selectedTaskId,
+    customPrompt: session.customPrompt,
+    uploadMeta: session.uploadMeta,
+    selectedScans: session.selectedScans,
+    selectedStrategies: session.selectedStrategies,
+    runId: session.runId,
+    liveRequested: session.liveRequested,
+  }
 }
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
@@ -79,39 +96,44 @@ const defaultDemoSession = (): DemoSession => ({
   liveRequested: false,
 })
 
+export function restoreDemoSession(saved: Partial<PersistedDemoSession>): RestoredDemoSession {
+  const fallback = defaultDemoSession()
+  const mode: Mode = saved.mode === 'custom' || saved.mode === 'upload' ? saved.mode : 'benchmark'
+  const selectedTaskId = BENCHMARK_TASKS.some(task => task.id === saved.selectedTaskId) ? saved.selectedTaskId! : null
+  const selectedScans = Array.isArray(saved.selectedScans)
+    ? [...new Set(saved.selectedScans.filter((id): id is ScanCategoryId => SCAN_CATEGORIES.some(category => category.id === id)))]
+    : []
+  const selectedStrategies = Array.isArray(saved.selectedStrategies)
+    ? [...new Set(saved.selectedStrategies.filter((id): id is StrategyId => STRATEGY_IDS.includes(id as StrategyId)))]
+    : [...STRATEGY_IDS]
+  const customPrompt = typeof saved.customPrompt === 'string' ? saved.customPrompt.slice(0, 1000) : ''
+  const runId = typeof saved.runId === 'string' && /^run_[0-9a-f]{32}$/.test(saved.runId) ? saved.runId : null
+  const liveRequested = saved.liveRequested === true
+  const rawMeta = saved.uploadMeta && typeof saved.uploadMeta === 'object' ? saved.uploadMeta : null
+  const uploadMeta: UploadMeta | null = rawMeta ? {
+    fileName: typeof rawMeta.fileName === 'string' ? rawMeta.fileName.slice(0, 255) : '',
+    expectedBehavior: typeof rawMeta.expectedBehavior === 'string' ? rawMeta.expectedBehavior.slice(0, 2_000) : '',
+    dependencies: typeof rawMeta.dependencies === 'string' ? rawMeta.dependencies.slice(0, 1_000) : '',
+    testFileName: typeof rawMeta.testFileName === 'string' ? rawMeta.testFileName.slice(0, 255) : '',
+    hasTests: rawMeta.hasTests === true,
+  } : null
+  let screen = Number.isInteger(saved.screen) ? Math.min(7, Math.max(0, saved.screen!)) : 0
+  const hasPersistedLiveRun = liveRequested && runId !== null
+
+  if (screen >= 2 && ((mode === 'benchmark' && !selectedTaskId) || (mode === 'custom' && customPrompt.trim().length < 20) || (mode === 'upload' && !hasPersistedLiveRun))) screen = 1
+  if (screen >= 4 && selectedScans.length === 0) screen = 3
+  if (screen >= 6 && selectedStrategies.length === 0) screen = 5
+
+  return { ...fallback, screen, mode, selectedTaskId, customPrompt, uploadedCode: '', uploadMeta, selectedScans, selectedStrategies, runId, liveRequested }
+}
+
 function loadDemoSession(): DemoSession {
   const fallback = defaultDemoSession()
   if (typeof window === 'undefined') return fallback
 
   try {
-    const saved = JSON.parse(window.localStorage.getItem(DEMO_SESSION_KEY) || '{}') as Partial<DemoSession>
-    const mode: Mode = saved.mode === 'custom' || saved.mode === 'upload' ? saved.mode : 'benchmark'
-    const selectedTaskId = BENCHMARK_TASKS.some(task => task.id === saved.selectedTaskId) ? saved.selectedTaskId! : null
-    const selectedScans = Array.isArray(saved.selectedScans)
-      ? [...new Set(saved.selectedScans.filter((id): id is ScanCategoryId => SCAN_CATEGORIES.some(category => category.id === id)))]
-      : []
-    const selectedStrategies = Array.isArray(saved.selectedStrategies)
-      ? [...new Set(saved.selectedStrategies.filter((id): id is StrategyId => STRATEGY_IDS.includes(id as StrategyId)))]
-      : [...STRATEGY_IDS]
-    const customPrompt = typeof saved.customPrompt === 'string' ? saved.customPrompt.slice(0, 1000) : ''
-    const uploadedCode = typeof saved.uploadedCode === 'string' ? saved.uploadedCode.slice(0, 100_000) : ''
-    const runId = typeof saved.runId === 'string' && /^run_[0-9a-f]{32}$/.test(saved.runId) ? saved.runId : null
-    const liveRequested = saved.liveRequested === true
-    const rawMeta = saved.uploadMeta && typeof saved.uploadMeta === 'object' ? saved.uploadMeta : null
-    const uploadMeta: UploadMeta | null = rawMeta ? {
-      fileName: typeof rawMeta.fileName === 'string' ? rawMeta.fileName.slice(0, 255) : '',
-      expectedBehavior: typeof rawMeta.expectedBehavior === 'string' ? rawMeta.expectedBehavior.slice(0, 2_000) : '',
-      dependencies: typeof rawMeta.dependencies === 'string' ? rawMeta.dependencies.slice(0, 1_000) : '',
-      testFileName: typeof rawMeta.testFileName === 'string' ? rawMeta.testFileName.slice(0, 255) : '',
-      hasTests: rawMeta.hasTests === true,
-    } : null
-    let screen = Number.isInteger(saved.screen) ? Math.min(7, Math.max(0, saved.screen!)) : 0
-
-    if (screen >= 2 && ((mode === 'benchmark' && !selectedTaskId) || (mode === 'custom' && customPrompt.trim().length < 20) || (mode === 'upload' && !uploadedCode.trim()))) screen = 1
-    if (screen >= 4 && selectedScans.length === 0) screen = 3
-    if (screen >= 6 && selectedStrategies.length === 0) screen = 5
-
-    return { screen, mode, selectedTaskId, customPrompt, uploadedCode, uploadMeta, selectedScans, selectedStrategies, runId, liveRequested }
+    const saved = JSON.parse(window.localStorage.getItem(DEMO_SESSION_KEY) || '{}') as Partial<PersistedDemoSession>
+    return restoreDemoSession(saved)
   } catch {
     return fallback
   }
@@ -1889,7 +1911,7 @@ export default function App() {
   const isLiveRun = ((mode === 'benchmark' && selectedTask?.id === 'T-01') || mode === 'upload') && live.requested
 
   useEffect(() => {
-    const session: DemoSession = {
+    const session = toPersistedDemoSession({
       screen,
       mode,
       selectedTaskId: selectedTask?.id || null,
@@ -1900,13 +1922,13 @@ export default function App() {
       selectedStrategies,
       runId: live.runId,
       liveRequested: live.requested,
-    }
+    })
     try {
       window.localStorage.setItem(DEMO_SESSION_KEY, JSON.stringify(session))
     } catch {
       // Private browsing or storage limits must never break the local demo.
     }
-  }, [screen, mode, selectedTask, customPrompt, uploadedCode, uploadMeta, selectedScans, selectedStrategies, live.runId, live.requested])
+  }, [screen, mode, selectedTask, customPrompt, uploadMeta, selectedScans, selectedStrategies, live.runId, live.requested])
 
   const handleBenchmark = (task: BenchmarkTask) => { setSelectedTask(task); setCustomPrompt(''); setUploadedCode(''); setUploadMeta(null); setMode('benchmark'); setScreen(2) }
   const handleCustom = (prompt: string) => { setSelectedTask(null); setCustomPrompt(prompt); setUploadedCode(''); setUploadMeta(null); setMode('custom'); setScreen(2) }
