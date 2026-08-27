@@ -1,17 +1,21 @@
 import os
+import shutil
 from collections.abc import Iterator
 from typing import Annotated
 from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, File, Form, Path as ApiPath, Request, UploadFile, status
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, Path as ApiPath, Request, UploadFile, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.database import create_database, upgrade_database
+from app.llm.client import LlmClient
+from app.reports import load_report
+from app.runner import RunnerDependencies, execute_baseline, execute_repairs
 from app.errors import (
     APIError,
     api_error_handler,
@@ -20,12 +24,27 @@ from app.errors import (
     error_response,
     validation_error_handler,
 )
-from app.schemas import HealthResponse, RunCreate, RunResponse, UploadReceipt
+from app.schemas import (
+    HealthResponse,
+    RunCreate,
+    RunProgress,
+    RunReport,
+    RunResponse,
+    StrategySelection,
+    UploadReceipt,
+)
 from app.uploads.policy import UploadPolicy, UploadPurpose
 from app.uploads.service import accept_upload, read_bounded_upload, reject_upload
 from app.uploads.store import ArtifactStore
 from app.uploads.validation import UploadRejected
-from app.services import cancel_run, create_run, get_run, start_run
+from app.services import (
+    cancel_run,
+    configure_strategies,
+    create_run,
+    get_progress,
+    get_run,
+    start_run,
+)
 
 DEFAULT_DATABASE_URL = "sqlite:///./data/secureeval.db"
 DEFAULT_ALLOWED_ORIGINS = (
@@ -70,6 +89,34 @@ def create_app(
     artifact_store = ArtifactStore(resolved_artifact_root)
     upload_policy = UploadPolicy()
 
+    runner_dependencies = RunnerDependencies(
+        fixture_root=Path(__file__).parent / "fixtures" / "benchmark_t01",
+        work_root=Path(
+            os.getenv(
+                "SECUREEVAL_WORK_ROOT",
+                str(resolved_artifact_root.parent / "runs"),
+            )
+        ),
+        tool_timeout_seconds=float(
+            os.getenv("SECUREEVAL_TOOL_TIMEOUT_SECONDS", "30")
+        ),
+        llm_client=LlmClient(
+            base_url=os.getenv(
+                "SECUREEVAL_LLM_BASE_URL",
+                "https://api.openai.com/v1",
+            ),
+            api_key=os.getenv("SECUREEVAL_LLM_API_KEY", ""),
+            model=os.getenv("SECUREEVAL_LLM_MODEL", ""),
+            input_price_per_million=float(
+                os.getenv("SECUREEVAL_LLM_INPUT_PRICE_PER_MILLION", "0")
+            ),
+            output_price_per_million=float(
+                os.getenv("SECUREEVAL_LLM_OUTPUT_PRICE_PER_MILLION", "0")
+            ),
+        ),
+    )
+    runner_dependencies.work_root.mkdir(parents=True, exist_ok=True)
+
     @asynccontextmanager
     async def lifespan(_application: FastAPI):
         yield
@@ -87,6 +134,7 @@ def create_app(
     application.state.session_factory = session_factory
     application.state.artifact_store = artifact_store
     application.state.upload_policy = upload_policy
+    application.state.runner_dependencies = runner_dependencies
 
     @application.middleware("http")
     async def request_id_middleware(request: Request, call_next):
@@ -149,13 +197,60 @@ def create_app(
     def read(run_id: RunId, session: Session = Depends(_session_dependency)) -> RunResponse:
         return get_run(session, run_id)
 
+
     @application.post("/api/v1/runs/{run_id}/start", response_model=RunResponse)
-    def start(run_id: RunId, session: Session = Depends(_session_dependency)) -> RunResponse:
-        return start_run(session, run_id)
+    def start(
+        run_id: RunId,
+        background_tasks: BackgroundTasks,
+        session: Session = Depends(_session_dependency),
+    ) -> RunResponse:
+        response = start_run(session, run_id)
+        background_tasks.add_task(
+            execute_baseline,
+            run_id,
+            session_factory,
+            runner_dependencies,
+        )
+        return response
+
+    @application.get("/api/v1/runs/{run_id}/progress", response_model=RunProgress)
+    def progress(
+        run_id: RunId,
+        session: Session = Depends(_session_dependency),
+    ) -> RunProgress:
+        return get_progress(session, run_id)
+
+    @application.post("/api/v1/runs/{run_id}/strategies", response_model=RunResponse)
+    def strategies(
+        run_id: RunId,
+        payload: StrategySelection,
+        background_tasks: BackgroundTasks,
+        session: Session = Depends(_session_dependency),
+    ) -> RunResponse:
+        response = configure_strategies(session, run_id, payload)
+        background_tasks.add_task(
+            execute_repairs,
+            run_id,
+            session_factory,
+            runner_dependencies,
+        )
+        return response
+
+    @application.get("/api/v1/runs/{run_id}/report", response_model=RunReport)
+    def report(
+        run_id: RunId,
+        session: Session = Depends(_session_dependency),
+    ) -> RunReport:
+        return load_report(session, run_id)
 
     @application.post("/api/v1/runs/{run_id}/cancel", response_model=RunResponse)
     def cancel(run_id: RunId, session: Session = Depends(_session_dependency)) -> RunResponse:
-        return cancel_run(session, run_id)
+        response = cancel_run(session, run_id)
+        shutil.rmtree(
+            runner_dependencies.work_root / run_id,
+            ignore_errors=True,
+        )
+        return response
 
     return application
 

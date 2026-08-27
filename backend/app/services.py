@@ -9,7 +9,13 @@ from app.enums import ALL_STRATEGIES, MODE_LABELS, JobStatus, Mode, StrategyId
 from app.errors import APIError
 from app.manifests import canonical_manifest, manifest_hash
 from app.models import RunRecord, StrategyAttemptRecord, UploadArtifactRecord
-from app.schemas import AttemptSummary, RunCreate, RunResponse
+from app.schemas import (
+    AttemptSummary,
+    RunCreate,
+    RunProgress,
+    RunResponse,
+    StrategySelection,
+)
 
 
 
@@ -158,12 +164,62 @@ def start_run(session: Session, run_id: str) -> RunResponse:
     if record.status != JobStatus.QUEUED.value:
         raise APIError(409, "invalid_state_transition", "Run cannot be started.")
     record.status = JobStatus.RUNNING.value
+    record.stage = "baseline_testing"
+    record.progress_json = json.dumps({"completed_stages": []}, separators=(",", ":"))
     record.updated_at = _now()
     for attempt in record.attempts:
         attempt.status = JobStatus.RUNNING.value
     session.commit()
     return _to_response(_load_run(session, run_id))
 
+
+
+
+def get_progress(session: Session, run_id: str) -> RunProgress:
+    record = _load_run(session, run_id)
+    progress = json.loads(record.progress_json or "{}")
+    return RunProgress(
+        run_id=record.run_id,
+        status=record.status,
+        stage=record.stage,
+        completed_stages=progress.get("completed_stages", []),
+        current_strategy=progress.get("current_strategy"),
+    )
+
+
+def configure_strategies(
+    session: Session,
+    run_id: str,
+    selection: StrategySelection,
+) -> RunResponse:
+    record = _load_run(session, run_id)
+    if (
+        record.status != JobStatus.RUNNING.value
+        or record.stage != "awaiting_strategy"
+    ):
+        raise APIError(
+            409,
+            "invalid_state_transition",
+            "Strategies cannot be configured.",
+        )
+    record.attempts.clear()
+    session.flush()
+    record.attempts.extend(
+        StrategyAttemptRecord(
+            attempt_id=_new_id("attempt"),
+            ordinal=index,
+            strategy_id=strategy.value,
+            status=JobStatus.RUNNING.value,
+        )
+        for index, strategy in enumerate(selection.expanded())
+    )
+    progress = json.loads(record.progress_json or "{}")
+    progress["current_strategy"] = record.attempts[0].strategy_id
+    record.progress_json = json.dumps(progress, separators=(",", ":"))
+    record.stage = "repairing"
+    record.updated_at = _now()
+    session.commit()
+    return _to_response(_load_run(session, run_id))
 
 def cancel_run(session: Session, run_id: str) -> RunResponse:
     record = _load_run(session, run_id)

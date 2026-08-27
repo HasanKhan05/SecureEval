@@ -127,7 +127,18 @@ def save_report(session: Session, report: RunReport) -> None:
     run.status = report.status.value
     run.stage = "completed"
     run.progress_json = json.dumps(
-        {"completed_stages": ["baseline", "repairs", "report"]},
+        {
+            "completed_stages": [
+                "baseline_testing",
+                "baseline_scanning",
+                "repairing",
+                "repaired_testing",
+                "repaired_scanning",
+                "reviewing",
+                "reporting",
+            ],
+            "current_strategy": None,
+        },
         separators=(",", ":"),
     )
     session.commit()

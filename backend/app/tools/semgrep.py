@@ -20,6 +20,7 @@ def run_semgrep(source: Path, timeout_seconds: float) -> ScanResult:
             str(CONFIG),
             "--json",
             "--quiet",
+            "--no-git-ignore",
             ".",
         ],
         source,

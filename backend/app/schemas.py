@@ -3,7 +3,14 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.enums import JobStatus, Mode, ModeLabel, ScanCategoryId, StrategyId
+from app.enums import (
+    ALL_STRATEGIES,
+    JobStatus,
+    Mode,
+    ModeLabel,
+    ScanCategoryId,
+    StrategyId,
+)
 from app.uploads.policy import UploadPurpose
 
 
@@ -13,7 +20,7 @@ class StrictModel(BaseModel):
 
 class RunCreate(StrictModel):
     mode: Mode
-    task_id: str | None = Field(default=None, min_length=6, max_length=128)
+    task_id: str | None = Field(default=None, min_length=4, max_length=128)
     upload_id: str | None = Field(default=None, min_length=8, max_length=128)
     custom_prompt: str | None = Field(default=None, min_length=20, max_length=4000)
     scan_categories: list[ScanCategoryId] = Field(min_length=1, max_length=5)
@@ -170,6 +177,24 @@ class RunProgress(StrictModel):
     completed_stages: list[RunStage]
     current_strategy: StrategyId | None = None
 
+class StrategySelection(StrictModel):
+    strategies: list[StrategyId | Literal["run_all"]] = Field(
+        min_length=1, max_length=3
+    )
+
+    @model_validator(mode="after")
+    def validate_selection(self) -> "StrategySelection":
+        if "run_all" in self.strategies:
+            if self.strategies != ["run_all"]:
+                raise ValueError("run_all cannot be combined with strategy identifiers")
+        elif len(set(self.strategies)) != len(self.strategies):
+            raise ValueError("strategies must be unique")
+        return self
+
+    def expanded(self) -> list[StrategyId]:
+        if self.strategies == ["run_all"]:
+            return list(ALL_STRATEGIES)
+        return [StrategyId(item) for item in self.strategies]
 
 class RunReport(StrictModel):
     schema_version: Literal["1.0"] = "1.0"
