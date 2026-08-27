@@ -169,3 +169,61 @@ def test_upload_static_report_excludes_invalid_repaired_syntax() -> None:
 
     assert report.best_overall is None
     assert report.best_efficiency is None
+
+
+def test_upload_mode_forces_static_evaluation_kind_before_ranking() -> None:
+    candidate = _strategy(StrategyId.SCANNER_FEEDBACK, 100)
+    candidate.repaired_tests = TestExecution(
+        status="unavailable",
+        passed=0,
+        failed=0,
+        skipped=0,
+        duration_ms=0,
+        output="Tests not executed.",
+        output_truncated=False,
+    )
+    candidate.repaired_syntax = SyntaxValidation(
+        status="completed", valid=True, message="Syntax valid."
+    )
+    candidate.metrics.functionality_score = None
+    candidate.metrics.score_basis = "static_only"
+
+    report = build_report(
+        run_id="run_" + "e" * 32,
+        mode=Mode.UPLOAD,
+        baseline_source="print('baseline')\n",
+        baseline_findings=[],
+        baseline_tests=candidate.repaired_tests,
+        strategy_results=[candidate],
+        explanation="Static evidence only.",
+        explanation_source="local_fallback",
+        limitations=["Functional tests were not executed."],
+        created_at=datetime(2026, 8, 27, tzinfo=UTC),
+    )
+
+    assert report.evaluation_kind == "upload_static"
+    assert report.best_overall == StrategyId.SCANNER_FEEDBACK
+
+
+def test_upload_static_report_excludes_full_metric_basis() -> None:
+    candidate = _strategy(StrategyId.SCANNER_FEEDBACK, 100)
+    candidate.repaired_syntax = SyntaxValidation(
+        status="completed", valid=True, message="Syntax valid."
+    )
+
+    report = build_report(
+        run_id="run_" + "f" * 32,
+        mode=Mode.UPLOAD,
+        evaluation_kind="upload_static",
+        baseline_source="print('baseline')\n",
+        baseline_findings=[],
+        baseline_tests=candidate.repaired_tests,
+        strategy_results=[candidate],
+        explanation="Static evidence only.",
+        explanation_source="local_fallback",
+        limitations=["Functional tests were not executed."],
+        created_at=datetime(2026, 8, 27, tzinfo=UTC),
+    )
+
+    assert report.best_overall is None
+    assert report.best_efficiency is None

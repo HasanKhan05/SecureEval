@@ -180,6 +180,8 @@ def build_report(
     limitations: list[str],
     created_at: datetime,
 ) -> RunReport:
+    if mode == Mode.UPLOAD:
+        evaluation_kind = "upload_static"
     if evaluation_kind == "benchmark_full":
         eligible = [
             item
@@ -197,6 +199,8 @@ def build_report(
             and item.repaired_syntax is not None
             and item.repaired_syntax.status == "completed"
             and item.repaired_syntax.valid
+            and item.metrics.score_basis == "static_only"
+            and item.metrics.functionality_score is None
         ]
     ranking = rank_strategies(
         [
