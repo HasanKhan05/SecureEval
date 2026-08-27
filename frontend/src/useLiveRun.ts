@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { createSecureEvalClient } from "./api/client";
 import type {
+  RunCreate,
   RunProgress,
   RunReport,
   ScanCategoryId,
@@ -17,7 +18,7 @@ function errorMessage(error: unknown): string {
     : "The SecureEval API request failed.";
 }
 
-export function useLiveBenchmark(
+export function useLiveRun(
   initialRunId: string | null,
   initialRequested = Boolean(initialRunId),
 ) {
@@ -98,25 +99,23 @@ export function useLiveBenchmark(
     };
   }, [client, report?.run_id, runId]);
 
-  const start = useCallback(
-    async (taskId: string, scanCategories: ScanCategoryId[]) => {
-      const operation = ++generation.current;
-      setRequested(true);
-      setRunId(null);
-      setError(null);
-      setTerminalMessage(null);
-      setReport(null);
-      setProgress(null);
-      setBusy(true);
+  const prepareStart = useCallback(() => {
+    const operation = ++generation.current;
+    setRequested(true);
+    setRunId(null);
+    setError(null);
+    setTerminalMessage(null);
+    setReport(null);
+    setProgress(null);
+    setBusy(true);
+    return operation;
+  }, []);
 
+  const createAndStart = useCallback(
+    async (payload: RunCreate, operation = prepareStart()) => {
       let created;
       try {
-        created = await client.createRun({
-          mode: "benchmark",
-          task_id: taskId,
-          scan_categories: scanCategories,
-          strategies: ["vulnerability_specific_v1"],
-        });
+        created = await client.createRun(payload);
       } catch (caught) {
         if (generation.current === operation) {
           setError(errorMessage(caught));
@@ -164,7 +163,56 @@ export function useLiveBenchmark(
       });
       return created.run_id;
     },
-    [client],
+    [client, prepareStart],
+  );
+
+  const startBenchmark = useCallback(
+    (taskId: string, scanCategories: ScanCategoryId[]) =>
+      createAndStart({
+        mode: "benchmark",
+        task_id: taskId,
+        scan_categories: scanCategories,
+        strategies: ["vulnerability_specific_v1"],
+      }),
+    [createAndStart],
+  );
+
+  const startUpload = useCallback(
+    async (
+      sourceCode: string,
+      fileName: string,
+      scanCategories: ScanCategoryId[],
+    ) => {
+      const operation = prepareStart();
+      const safeName = fileName.toLowerCase().endsWith(".py")
+        ? fileName
+        : "uploaded_code.py";
+      const source = new File([sourceCode], safeName, { type: "text/x-python" });
+
+      let uploadId: string;
+      try {
+        const receipt = await client.uploadSource(source, "uploaded_code");
+        uploadId = receipt.upload_id;
+      } catch (caught) {
+        if (generation.current === operation) {
+          setError(errorMessage(caught));
+          setBusy(false);
+        }
+        return null;
+      }
+      if (generation.current !== operation) return null;
+
+      return createAndStart(
+        {
+          mode: "upload",
+          upload_id: uploadId,
+          scan_categories: scanCategories,
+          strategies: ["vulnerability_specific_v1"],
+        },
+        operation,
+      );
+    },
+    [client, createAndStart, prepareStart],
   );
 
   const configure = useCallback(
@@ -214,7 +262,8 @@ export function useLiveBenchmark(
     error,
     terminalMessage,
     busy,
-    start,
+    startBenchmark,
+    startUpload,
     configure,
     cancel,
     reset,

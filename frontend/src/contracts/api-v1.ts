@@ -25,6 +25,9 @@ export type ToolStatus =
   | "unavailable"
   | "cancelled";
 
+export type EvaluationKind = "benchmark_full" | "upload_static";
+export type ScoreBasis = "full" | "static_only";
+
 export type RunStage =
   | "queued"
   | "baseline_testing"
@@ -252,6 +255,14 @@ export interface TestExecution {
   output_truncated: boolean;
 }
 
+export interface SyntaxValidation {
+  status: "completed" | "failed";
+  valid: boolean;
+  line: number | null;
+  column: number | null;
+  message: string;
+}
+
 export interface LlmUsage {
   source: "llm" | "local_fallback";
   provider: string | null;
@@ -265,11 +276,12 @@ export interface LlmUsage {
 }
 
 export interface StrategyMetrics {
+  score_basis: ScoreBasis;
   findings_before: number;
   findings_after: number;
   fixed_count: number;
   security_score: number;
-  functionality_score: number;
+  functionality_score: number | null;
   overall_score: number;
   efficiency_score: number;
 }
@@ -283,6 +295,7 @@ export interface StrategyResult {
   limitations: string[];
   repaired_findings: Finding[];
   repaired_scan_status: ToolStatus;
+  repaired_syntax: SyntaxValidation | null;
   repaired_tests: TestExecution;
   llm_usage: LlmUsage;
   review: string;
@@ -302,9 +315,11 @@ export interface RunReport {
   run_id: string;
   status: JobStatus;
   mode: Mode;
+  evaluation_kind: EvaluationKind;
   baseline_source: string;
   baseline_findings: Finding[];
   baseline_scan_status: ToolStatus;
+  baseline_syntax: SyntaxValidation | null;
   baseline_tests: TestExecution;
   strategy_results: StrategyResult[];
   best_overall: StrategyId | null;

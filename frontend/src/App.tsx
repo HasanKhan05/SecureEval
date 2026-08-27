@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import type { ScanCategoryId, StrategyId } from './contracts/api-v1'
 import { LiveAnalysisScreen, LiveComparisonScreen, LiveResultsScreen } from './LiveScreens'
 import { SCAN_CATEGORIES, STRATEGY_IDS, STRATEGY_META } from './taxonomy'
-import { useLiveBenchmark } from './useLiveBenchmark'
+import { useLiveRun } from './useLiveRun'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1885,8 +1885,8 @@ export default function App() {
   const [uploadMeta, setUploadMeta] = useState<UploadMeta | null>(initialSession.uploadMeta)
   const [selectedScans, setSelectedScans] = useState<ScanCategoryId[]>(initialSession.selectedScans)
   const [selectedStrategies, setSelectedStrategies] = useState<StrategyId[]>(initialSession.selectedStrategies)
-  const live = useLiveBenchmark(initialSession.runId, initialSession.liveRequested)
-  const isLiveBenchmark = mode === 'benchmark' && selectedTask?.id === 'T-01' && live.requested
+  const live = useLiveRun(initialSession.runId, initialSession.liveRequested)
+  const isLiveRun = ((mode === 'benchmark' && selectedTask?.id === 'T-01') || mode === 'upload') && live.requested
 
   useEffect(() => {
     const session: DemoSession = {
@@ -1939,20 +1939,24 @@ export default function App() {
         {screen === 3 && <ScanSelectionScreen initialSelected={selectedScans} onDone={scans => {
           setSelectedScans(scans)
           setScreen(4)
-          if (mode === 'benchmark' && selectedTask?.id === 'T-01') void live.start('T-01', scans)
+          if (mode === 'benchmark' && selectedTask?.id === 'T-01') {
+            void live.startBenchmark('T-01', scans)
+          } else if (mode === 'upload') {
+            void live.startUpload(uploadedCode, uploadMeta?.fileName || 'uploaded_code.py', scans)
+          }
         }} />}
-        {screen === 4 && (isLiveBenchmark
+        {screen === 4 && (isLiveRun
           ? <LiveAnalysisScreen progress={live.progress} scans={selectedScans} error={live.error} terminalMessage={live.terminalMessage} onDone={() => setScreen(5)} onBack={() => setScreen(3)} onCancel={() => void live.cancel()} />
           : <AnalysisScreen mode={mode} task={selectedTask} scans={selectedScans} onDone={() => setScreen(5)} onBack={() => setScreen(3)} />)}
         {screen === 5 && <RepairStrategyScreen initialSelected={selectedStrategies} onSelect={strats => {
           setSelectedStrategies(strats)
           setScreen(6)
-          if (isLiveBenchmark) void live.configure(strats)
+          if (isLiveRun) void live.configure(strats)
         }} />}
-        {screen === 6 && (isLiveBenchmark
+        {screen === 6 && (isLiveRun
           ? <LiveComparisonScreen progress={live.progress} report={live.report} strategies={selectedStrategies} error={live.error} terminalMessage={live.terminalMessage} onDone={() => setScreen(7)} onCancel={() => void live.cancel()} onBack={() => setScreen(3)} />
           : <ComparisonScreen mode={mode} strategies={selectedStrategies} onDone={() => setScreen(7)} />)}
-        {screen === 7 && (isLiveBenchmark
+        {screen === 7 && (isLiveRun
           ? live.report
             ? <LiveResultsScreen report={live.report} onRestart={restartDemo} />
             : <main className="mx-auto max-w-4xl px-4 py-16"><div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm"><div className="font-display text-xl font-black uppercase">Loading persisted report</div><p className="mt-2 text-sm text-slate-500">Reconnecting to the local evaluator…</p>{live.error && <p role="alert" className="mt-4 text-sm text-rose-700">{live.error}</p>}</div></main>

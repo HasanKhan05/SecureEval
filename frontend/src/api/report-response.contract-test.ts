@@ -18,8 +18,10 @@ const reportFixture = {
   run_id: "run_00000000000000000000000000000000",
   status: "completed",
   mode: "benchmark",
+  evaluation_kind: "benchmark_full",
   baseline_source: "def lookup(): pass\n",
   baseline_scan_status: "completed",
+  baseline_syntax: null,
   baseline_findings: [
     {
       finding_id: "finding_00000000000000000000000000000000",
@@ -52,6 +54,7 @@ const reportFixture = {
       repair_summary: "Parameterized the SQL query.",
       limitations: ["Controlled T-01 repair."],
       repaired_scan_status: "completed",
+      repaired_syntax: null,
       repaired_findings: [],
       repaired_tests: {
         status: "completed",
@@ -75,6 +78,7 @@ const reportFixture = {
       },
       review: "Configured checks passed; this is not a security guarantee.",
       metrics: {
+        score_basis: "full",
         findings_before: 2,
         findings_after: 0,
         fixed_count: 2,
