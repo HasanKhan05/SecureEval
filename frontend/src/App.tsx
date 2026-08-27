@@ -717,7 +717,7 @@ function PromptSelectionScreen({ onBenchmark, onCustom, onUpload }: { onBenchmar
                 <span className="text-teal-600 mt-0.5">⬡</span>
                 <div>
                   <div className="text-[10px] font-mono text-teal-700 uppercase tracking-widest mb-1">Code Audit Mode — Exploratory</div>
-                  <p className="text-xs text-teal-800 leading-relaxed">Upload or paste Python code to preview the complete analysis and repair workflow. Files stay in this browser and are <strong>not executed or sent to an external service</strong>.</p>
+                  <p className="text-xs text-teal-800 leading-relaxed">Code goes only to the local SecureEval backend for static analysis and is never executed. Provided tests are recorded as context only and are not uploaded or executed in this safe static-analysis slice.</p>
                 </div>
               </div>
 
@@ -821,7 +821,7 @@ function PromptSelectionScreen({ onBenchmark, onCustom, onUpload }: { onBenchmar
               <div className="rounded-lg border border-slate-200 bg-white/70 px-5 py-4 shadow-sm">
                 <p className="text-[9px] font-mono text-slate-400 uppercase tracking-widest mb-2">Code Audit Pipeline</p>
                 <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-mono text-slate-500">
-                  {['Upload Code', 'Functional Analysis', 'Select Scans', 'Security Analysis', 'Select Repair', 'Repair', 'Verify', 'Review', 'Results'].map((s, i, arr) => (
+                  {['Upload Code', 'Static Analysis', 'Select Scans', 'Security Analysis', 'Select Repair', 'Repair', 'Rescan', 'Review', 'Results'].map((s, i, arr) => (
                     <span key={s} className="flex items-center gap-1.5">
                       <span className="text-teal-700">{s}</span>
                       {i < arr.length - 1 && <span className="text-slate-300">→</span>}
@@ -877,18 +877,18 @@ function CodeGenerationScreen({ mode, task, customPrompt, uploadedCode, uploadMe
             {uploadMeta?.fileName && <span className="text-[9px] font-mono text-slate-400">{uploadMeta.fileName}</span>}
           </div>
           <div className="font-display font-black text-lg text-[#111118] uppercase tracking-tight mb-1">Existing Code Analysis</div>
-          <p className="text-xs text-slate-600 leading-relaxed">Uploaded code is ready for security analysis. Code generation step skipped — proceeding directly to functional analysis and scan configuration.</p>
+          <p className="text-xs text-slate-600 leading-relaxed">Code goes only to the local SecureEval backend for static analysis and is never executed. Code generation is skipped — proceed directly to scan configuration.</p>
         </div>
 
         {/* Functional analysis context */}
         <div className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
           <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-            <span className="text-[9px] font-mono text-slate-400 uppercase tracking-widest">Functional Context</span>
-            <span className={`text-[10px] font-mono font-bold ${confidenceColor}`}>Verification Confidence: {confidence}</span>
+            <span className="text-[9px] font-mono text-slate-400 uppercase tracking-widest">Static Analysis Context</span>
+            <span className={`text-[10px] font-mono font-bold ${confidenceColor}`}>Context completeness: {confidence}</span>
           </div>
           <div className="grid grid-cols-3 divide-x divide-slate-100 p-0">
             {[
-              { l: 'Tests Provided', v: hasTests ? 'Yes' : 'No', ok: hasTests },
+              { l: 'Tests Provided', v: hasTests ? 'Context only' : 'None', ok: hasTests },
               { l: 'Expected Behaviour', v: hasExpected ? 'Yes' : 'No', ok: hasExpected },
               { l: 'Dependencies', v: uploadMeta?.dependencies || 'Not specified', ok: !!uploadMeta?.dependencies },
             ].map(item => (
@@ -898,11 +898,9 @@ function CodeGenerationScreen({ mode, task, customPrompt, uploadedCode, uploadMe
               </div>
             ))}
           </div>
-          {!hasTests && (
-            <div className="px-4 py-2.5 border-t border-slate-100 bg-amber-50/60">
-              <p className="text-[10px] font-mono text-amber-700">No test file provided — functional verification confidence is limited. Repair correctness assessment will rely on static analysis and reviewer evaluation.</p>
+          <div className="px-4 py-2.5 border-t border-slate-100 bg-amber-50/60">
+            <p className="text-[10px] font-mono text-amber-700">Provided tests are recorded as context only and are not uploaded or executed in this safe static-analysis slice.</p>
             </div>
-          )}
         </div>
 
         {/* Uploaded code preview */}
@@ -915,7 +913,7 @@ function CodeGenerationScreen({ mode, task, customPrompt, uploadedCode, uploadMe
           <CodePanel code={displayCode} title={uploadMeta?.fileName || 'uploaded_code.py'} highlights={[9, 10, 11, 12, 13]} />
           <div className="flex items-start gap-3 p-4 rounded-lg border border-amber-200 bg-amber-50">
             <span className="text-amber-600 mt-0.5">⚠</span>
-            <p className="text-xs text-slate-600 leading-relaxed">Deterministic sample findings are ready for this code preview. Configure the demo scan next; token, cost, and latency values are illustrative.</p>
+            <p className="text-xs text-slate-600 leading-relaxed">The local SecureEval backend will perform static analysis only. This preview is not evidence of scanner findings, and static analysis is not a security guarantee.</p>
           </div>
           <button onClick={onDone}
             className="inline-flex items-center gap-3 px-7 py-3.5 bg-teal-700 hover:bg-teal-800 text-white font-display font-bold uppercase tracking-widest text-sm rounded transition-all hover:scale-[1.02] shadow-sm">
@@ -1000,7 +998,7 @@ function CodeGenerationScreen({ mode, task, customPrompt, uploadedCode, uploadMe
 
 // ─── Screen 3: Scan Selection ─────────────────────────────────────────────────
 
-function ScanSelectionScreen({ onDone, initialSelected }: { onDone: (scans: ScanCategoryId[]) => void; initialSelected: ScanCategoryId[] }) {
+function ScanSelectionScreen({ mode, onDone, initialSelected }: { mode: Mode; onDone: (scans: ScanCategoryId[]) => void; initialSelected: ScanCategoryId[] }) {
   const [selected, setSelected] = useState<Set<ScanCategoryId>>(() => new Set(initialSelected))
 
   const toggle = (id: ScanCategoryId) => {
@@ -1012,7 +1010,7 @@ function ScanSelectionScreen({ onDone, initialSelected }: { onDone: (scans: Scan
     <div className="min-h-[calc(100vh-56px)] px-4 md:px-10 py-8 max-w-5xl mx-auto">
       <h2 className="font-display font-black text-xl md:text-2xl text-[#111118] uppercase tracking-tight mb-1">Configure Security Scan</h2>
       <p className="text-sm text-slate-500 mb-2 max-w-xl leading-relaxed">Select which security categories to scan for. Multiple categories can be active simultaneously — generated code may contain more than one vulnerability type.</p>
-      <p className="text-[11px] font-mono text-slate-400 mb-6">Demo analysis uses deterministic sample findings modelled after Bandit and Semgrep output.</p>
+      <p className="text-[11px] font-mono text-slate-400 mb-6">{mode === 'upload' ? 'The local SecureEval backend runs selected static scanners only; uploaded code is never executed.' : 'Demo analysis uses deterministic sample findings modelled after Bandit and Semgrep output.'}</p>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
         {SCAN_CATEGORIES.map(cat => {
@@ -1958,7 +1956,7 @@ export default function App() {
         {screen === 0 && <LandingScreen onStart={() => setScreen(1)} />}
         {screen === 1 && <PromptSelectionScreen onBenchmark={handleBenchmark} onCustom={handleCustom} onUpload={handleUpload} />}
         {screen === 2 && <CodeGenerationScreen mode={mode} task={selectedTask} customPrompt={customPrompt} uploadedCode={uploadedCode} uploadMeta={uploadMeta} onDone={() => setScreen(3)} />}
-        {screen === 3 && <ScanSelectionScreen initialSelected={selectedScans} onDone={scans => {
+        {screen === 3 && <ScanSelectionScreen mode={mode} initialSelected={selectedScans} onDone={scans => {
           setSelectedScans(scans)
           setScreen(4)
           if (mode === 'benchmark' && selectedTask?.id === 'T-01') {
@@ -1968,7 +1966,7 @@ export default function App() {
           }
         }} />}
         {screen === 4 && (isLiveRun
-          ? <LiveAnalysisScreen progress={live.progress} scans={selectedScans} error={live.error} terminalMessage={live.terminalMessage} onDone={() => setScreen(5)} onBack={() => setScreen(3)} onCancel={() => void live.cancel()} />
+          ? <LiveAnalysisScreen mode={mode} progress={live.progress} scans={selectedScans} error={live.error} terminalMessage={live.terminalMessage} onDone={() => setScreen(5)} onBack={() => setScreen(3)} onCancel={() => void live.cancel()} />
           : <AnalysisScreen mode={mode} task={selectedTask} scans={selectedScans} onDone={() => setScreen(5)} onBack={() => setScreen(3)} />)}
         {screen === 5 && <RepairStrategyScreen initialSelected={selectedStrategies} onSelect={strats => {
           setSelectedStrategies(strats)
@@ -1976,7 +1974,7 @@ export default function App() {
           if (isLiveRun) void live.configure(strats)
         }} />}
         {screen === 6 && (isLiveRun
-          ? <LiveComparisonScreen progress={live.progress} report={live.report} strategies={selectedStrategies} error={live.error} terminalMessage={live.terminalMessage} onDone={() => setScreen(7)} onCancel={() => void live.cancel()} onBack={() => setScreen(3)} />
+          ? <LiveComparisonScreen mode={mode} progress={live.progress} report={live.report} strategies={selectedStrategies} error={live.error} terminalMessage={live.terminalMessage} onDone={() => setScreen(7)} onCancel={() => void live.cancel()} onBack={() => setScreen(3)} />
           : <ComparisonScreen mode={mode} strategies={selectedStrategies} onDone={() => setScreen(7)} />)}
         {screen === 7 && (isLiveRun
           ? live.report
