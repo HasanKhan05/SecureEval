@@ -8,6 +8,7 @@
     "build": "vite build",
     "verify:figma-baseline": "node scripts/verify-figma-baseline.mjs",
     "verify:responsive": "pnpm build && node scripts/verify-responsive-layout.mjs",
+    "verify:real-benchmark": "node scripts/verify-real-benchmark.mjs",
     "preview": "vite preview",
     "format": "oxfmt"
   },

@@ -18,6 +18,27 @@ export type JobStatus =
   | "failed"
   | "cancelled";
 
+export type ToolStatus =
+  | "completed"
+  | "failed"
+  | "timeout"
+  | "unavailable"
+  | "cancelled";
+
+export type RunStage =
+  | "queued"
+  | "baseline_testing"
+  | "baseline_scanning"
+  | "awaiting_strategy"
+  | "repairing"
+  | "repaired_testing"
+  | "repaired_scanning"
+  | "reviewing"
+  | "reporting"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
 export type FailureCode =
   | "validation_error"
   | "upload_rejected"
@@ -194,7 +215,7 @@ export interface AttemptReport {
   limitations: string[];
 }
 
-export interface RunReport {
+export interface LegacyRunReport {
   schema_version: "1.0";
   run: Run;
   attempts: AttemptReport[];
@@ -206,6 +227,90 @@ export interface RunReport {
   corpus_version?: string;
   metric_version: string;
   limitations: string[];
+}
+
+export interface Finding {
+  finding_id: string;
+  scanner: "bandit" | "semgrep";
+  rule_id: string;
+  category: ScanCategoryId;
+  severity: "low" | "medium" | "high";
+  confidence: "low" | "medium" | "high" | null;
+  filename: string;
+  line_start: number;
+  line_end: number;
+  message: string;
+}
+
+export interface TestExecution {
+  status: ToolStatus;
+  passed: number;
+  failed: number;
+  skipped: number;
+  duration_ms: number;
+  output: string;
+  output_truncated: boolean;
+}
+
+export interface LlmUsage {
+  source: "llm" | "local_fallback";
+  provider: string | null;
+  model: string | null;
+  status: ToolStatus | "invalid_response";
+  input_tokens: number;
+  output_tokens: number;
+  estimated_cost_usd: number;
+  latency_ms: number;
+  retries: number;
+}
+
+export interface StrategyMetrics {
+  findings_before: number;
+  findings_after: number;
+  fixed_count: number;
+  security_score: number;
+  functionality_score: number;
+  overall_score: number;
+  efficiency_score: number;
+}
+
+export interface StrategyResult {
+  attempt_id: string;
+  strategy_id: StrategyId;
+  status: JobStatus;
+  repaired_code: string;
+  repair_summary: string;
+  limitations: string[];
+  repaired_findings: Finding[];
+  repaired_tests: TestExecution;
+  llm_usage: LlmUsage;
+  review: string;
+  metrics: StrategyMetrics;
+}
+
+export interface RunProgress {
+  run_id: string;
+  status: JobStatus;
+  stage: RunStage;
+  completed_stages: RunStage[];
+  current_strategy: StrategyId | null;
+}
+
+export interface RunReport {
+  schema_version: "1.0";
+  run_id: string;
+  status: JobStatus;
+  mode: Mode;
+  baseline_source: string;
+  baseline_findings: Finding[];
+  baseline_tests: TestExecution;
+  strategy_results: StrategyResult[];
+  best_overall: StrategyId | null;
+  best_efficiency: StrategyId | null;
+  explanation: string;
+  explanation_source: "llm" | "local_fallback";
+  limitations: string[];
+  created_at: string;
 }
 
 export interface OfficialAggregate {

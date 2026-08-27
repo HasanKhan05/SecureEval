@@ -3,6 +3,9 @@ import type {
   HealthResponse,
   Run,
   RunCreate,
+  RunProgress,
+  RunReport,
+  StrategyId,
   UploadPurpose,
   UploadReceipt,
 } from "../contracts/api-v1";
@@ -33,6 +36,9 @@ export interface SecureEvalClient {
   getRun(runId: string): Promise<Run>;
   startRun(runId: string): Promise<Run>;
   cancelRun(runId: string): Promise<Run>;
+  getProgress(runId: string): Promise<RunProgress>;
+  configureStrategies(runId: string, strategies: StrategyId[]): Promise<Run>;
+  getReport(runId: string): Promise<RunReport>;
 }
 
 function isErrorEnvelope(value: unknown): value is ErrorEnvelope {
@@ -101,5 +107,12 @@ export function createSecureEvalClient(
     getRun: (runId) => request<Run>(runPath(runId)),
     startRun: (runId) => request<Run>(`${runPath(runId)}/start`, { method: "POST" }),
     cancelRun: (runId) => request<Run>(`${runPath(runId)}/cancel`, { method: "POST" }),
+    getProgress: (runId) => request<RunProgress>(`${runPath(runId)}/progress`),
+    configureStrategies: (runId, strategies) =>
+      request<Run>(`${runPath(runId)}/strategies`, {
+        method: "POST",
+        body: JSON.stringify({ strategies }),
+      }),
+    getReport: (runId) => request<RunReport>(`${runPath(runId)}/report`),
   };
 }
