@@ -9,16 +9,19 @@ description = "SecureEval FastAPI backend"
 requires-python = "==3.14.*"
 dependencies = [
   "alembic==1.19.1",
+  "bandit==1.9.4",
   "fastapi==0.141.1",
+  "httpx==0.28.1",
+  "pandas==3.0.5",
   "pydantic==2.13.4",
   "python-multipart==0.0.32",
+  "semgrep==1.175.0",
   "sqlalchemy==2.0.52",
   "uvicorn==0.52.4",
 ]
 
 [project.optional-dependencies]
 test = [
-  "httpx==0.28.1",
   "pytest==9.1.1",
   "pytest-cov==7.1.0",
 ]
