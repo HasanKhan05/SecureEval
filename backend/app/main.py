@@ -14,7 +14,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.database import create_database, upgrade_database
 from app.llm.client import LlmClient
 from app.reports import load_report
-from app.runner import execute_baseline, execute_repairs
+from app.runner import execute_run_baseline, execute_run_repairs
 from app.runner_support import RunnerDependencies, cleanup_run
 from app.errors import (
     APIError,
@@ -207,7 +207,7 @@ def create_app(
     ) -> RunResponse:
         response = start_run(session, run_id)
         background_tasks.add_task(
-            execute_baseline,
+            execute_run_baseline,
             run_id,
             session_factory,
             runner_dependencies,
@@ -230,7 +230,7 @@ def create_app(
     ) -> RunResponse:
         response = configure_strategies(session, run_id, payload)
         background_tasks.add_task(
-            execute_repairs,
+            execute_run_repairs,
             run_id,
             session_factory,
             runner_dependencies,

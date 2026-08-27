@@ -1,3 +1,4 @@
+import hashlib
 import json
 from datetime import datetime
 from uuid import uuid4
@@ -35,8 +36,12 @@ def _finding_record(
     stage: str,
     finding: Finding,
 ) -> FindingRecord:
+    occurrence = ":".join(
+        (run_id, attempt_id or "baseline", stage, finding.finding_id)
+    ).encode("utf-8")
+    occurrence_id = f"finding_{hashlib.sha256(occurrence).hexdigest()[:32]}"
     return FindingRecord(
-        finding_id=finding.finding_id,
+        finding_id=occurrence_id,
         run_id=run_id,
         attempt_id=attempt_id,
         stage=stage,

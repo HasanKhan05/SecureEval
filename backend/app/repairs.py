@@ -56,7 +56,7 @@ def _fallback(source: str, provider_status: str) -> LlmResult[RepairProposal]:
                 f"after LLM status: {provider_status}."
             ),
             limitations=[
-                "This fallback recognizes only the controlled T-01 fixture pattern."
+                "The local fallback recognizes only the demonstrated SQL interpolation pattern."
             ],
         ),
         source="local_fallback",

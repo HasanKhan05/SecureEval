@@ -4,6 +4,7 @@ from app.enums import StrategyId
 from app.llm.client import LlmClient
 from app.repairs import repair_source
 from app.schemas import TestExecution
+from app.static_evidence import unavailable_functional_tests
 
 
 FIXTURE_SOURCE = (
@@ -70,3 +71,29 @@ def test_fallback_does_not_claim_to_repair_unknown_source() -> None:
     assert result.status == "failed"
     assert result.source == "local_fallback"
     assert result.value is None
+
+
+def test_fallback_repairs_filename_independent_upload_without_tests() -> None:
+    source = (
+        "def uploaded_lookup(connection, username):\n"
+        '    query = f"SELECT id, username, role FROM users WHERE username = '
+        "'{username}'\"\n"
+        "    return connection.execute(query).fetchone()\n"
+    )
+    client = LlmClient(base_url="https://example.test/v1", api_key="", model="")
+
+    result = repair_source(
+        StrategyId.SCANNER_FEEDBACK,
+        source,
+        findings=[],
+        test_result=unavailable_functional_tests(),
+        llm_client=client,
+    )
+
+    assert result.status == "completed"
+    assert result.value is not None
+    assert "username = ?" in result.value.repaired_code
+    assert "execute(query, (username,))" in result.value.repaired_code
+    assert result.value.limitations == [
+        "The local fallback recognizes only the demonstrated SQL interpolation pattern."
+    ]

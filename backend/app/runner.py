@@ -24,6 +24,10 @@ from app.scoring import EvidenceSnapshot, score_strategy
 from app.tools.bandit import run_bandit
 from app.tools.pytest_runner import run_pytest
 from app.tools.semgrep import run_semgrep
+from app.upload_runner import (
+    execute_upload_baseline,
+    execute_upload_repairs,
+)
 
 
 def execute_baseline(
@@ -281,3 +285,58 @@ def execute_repairs(
             }
         if terminal:
             cleanup_run(dependencies, run_id)
+
+
+def _persisted_mode(
+    run_id: str,
+    session_factory: sessionmaker[Session],
+) -> Mode | None:
+    with session_factory() as session:
+        record = session.get(RunRecord, run_id)
+        return None if record is None else Mode(record.mode)
+
+
+def execute_run_baseline(
+    run_id: str,
+    session_factory: sessionmaker[Session],
+    dependencies: RunnerDependencies,
+) -> None:
+    mode = _persisted_mode(run_id, session_factory)
+    if mode is None:
+        return
+    if mode == Mode.BENCHMARK:
+        execute_baseline(run_id, session_factory, dependencies)
+        return
+    if mode == Mode.UPLOAD:
+        execute_upload_baseline(run_id, session_factory, dependencies)
+        return
+    fail_run(
+        session_factory,
+        run_id,
+        "unsupported_mode",
+        "Custom Prompt mode is not supported by the live backend.",
+    )
+    cleanup_run(dependencies, run_id)
+
+
+def execute_run_repairs(
+    run_id: str,
+    session_factory: sessionmaker[Session],
+    dependencies: RunnerDependencies,
+) -> None:
+    mode = _persisted_mode(run_id, session_factory)
+    if mode is None:
+        return
+    if mode == Mode.BENCHMARK:
+        execute_repairs(run_id, session_factory, dependencies)
+        return
+    if mode == Mode.UPLOAD:
+        execute_upload_repairs(run_id, session_factory, dependencies)
+        return
+    fail_run(
+        session_factory,
+        run_id,
+        "unsupported_mode",
+        "Custom Prompt mode is not supported by the live backend.",
+    )
+    cleanup_run(dependencies, run_id)
