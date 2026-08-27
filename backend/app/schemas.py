@@ -86,3 +86,103 @@ class UploadReceipt(BaseModel):
     retention_class: Literal["exploratory_24h"] = "exploratory_24h"
     created_at: datetime
     expires_at: datetime
+
+ToolStatus = Literal["completed", "failed", "timeout", "unavailable", "cancelled"]
+RunStage = Literal[
+    "queued",
+    "baseline_testing",
+    "baseline_scanning",
+    "awaiting_strategy",
+    "repairing",
+    "repaired_testing",
+    "repaired_scanning",
+    "reviewing",
+    "reporting",
+    "completed",
+    "failed",
+    "cancelled",
+]
+
+
+class Finding(StrictModel):
+    finding_id: str = Field(min_length=8, max_length=64)
+    scanner: Literal["bandit", "semgrep"]
+    rule_id: str = Field(min_length=1, max_length=160)
+    category: ScanCategoryId
+    severity: Literal["low", "medium", "high"]
+    confidence: Literal["low", "medium", "high"] | None = None
+    filename: str = Field(min_length=1, max_length=256)
+    line_start: int = Field(ge=1)
+    line_end: int = Field(ge=1)
+    message: str = Field(min_length=1, max_length=4000)
+
+
+class TestExecution(StrictModel):
+    status: ToolStatus
+    passed: int = Field(ge=0)
+    failed: int = Field(ge=0)
+    skipped: int = Field(ge=0)
+    duration_ms: int = Field(ge=0)
+    output: str = Field(max_length=65536)
+    output_truncated: bool
+
+
+class LlmUsage(StrictModel):
+    source: Literal["llm", "local_fallback"]
+    provider: str | None = Field(default=None, max_length=64)
+    model: str | None = Field(default=None, max_length=128)
+    status: ToolStatus | Literal["invalid_response"]
+    input_tokens: int = Field(ge=0)
+    output_tokens: int = Field(ge=0)
+    estimated_cost_usd: float = Field(ge=0)
+    latency_ms: int = Field(ge=0)
+    retries: int = Field(ge=0, le=3)
+
+
+class StrategyMetrics(StrictModel):
+    findings_before: int = Field(ge=0)
+    findings_after: int = Field(ge=0)
+    fixed_count: int = Field(ge=0)
+    security_score: float = Field(ge=0, le=100)
+    functionality_score: float = Field(ge=0, le=100)
+    overall_score: float = Field(ge=0, le=100)
+    efficiency_score: float = Field(ge=0, le=100)
+
+
+class StrategyResult(StrictModel):
+    attempt_id: str = Field(min_length=8, max_length=64)
+    strategy_id: StrategyId
+    status: JobStatus
+    repaired_code: str = Field(max_length=200000)
+    repair_summary: str = Field(min_length=1, max_length=4000)
+    limitations: list[str] = Field(max_length=20)
+    repaired_findings: list[Finding]
+    repaired_tests: TestExecution
+    llm_usage: LlmUsage
+    review: str = Field(min_length=1, max_length=8000)
+    metrics: StrategyMetrics
+
+
+class RunProgress(StrictModel):
+    run_id: str = Field(min_length=8, max_length=64)
+    status: JobStatus
+    stage: RunStage
+    completed_stages: list[RunStage]
+    current_strategy: StrategyId | None = None
+
+
+class RunReport(StrictModel):
+    schema_version: Literal["1.0"] = "1.0"
+    run_id: str = Field(min_length=8, max_length=64)
+    status: JobStatus
+    mode: Mode
+    baseline_source: str = Field(max_length=200000)
+    baseline_findings: list[Finding]
+    baseline_tests: TestExecution
+    strategy_results: list[StrategyResult]
+    best_overall: StrategyId | None
+    best_efficiency: StrategyId | None
+    explanation: str = Field(min_length=1, max_length=12000)
+    explanation_source: Literal["llm", "local_fallback"]
+    limitations: list[str] = Field(max_length=20)
+    created_at: datetime
