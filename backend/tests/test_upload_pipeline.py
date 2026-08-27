@@ -394,3 +394,133 @@ def test_upload_report_persists_a_finding_that_survives_repair(
         report["strategy_results"][0]["repaired_findings"][0]["finding_id"]
         == persistent.finding_id
     )
+
+
+@pytest.mark.parametrize("failure_kind", ["failed_result", "exception"])
+def test_failed_upload_repair_does_not_block_independent_strategy(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_kind: str,
+) -> None:
+    from app import upload_runner
+    from app.enums import StrategyId
+    from app.llm.contracts import LlmResult
+
+    real_repair_source = upload_runner.repair_source
+
+    def repair(strategy_id, source, findings, test_result, llm_client):
+        if strategy_id == StrategyId.VULNERABILITY_SPECIFIC:
+            if failure_kind == "exception":
+                raise RuntimeError("unexpected repair failure")
+            return LlmResult(
+                value=None,
+                source="local_fallback",
+                provider=None,
+                model=None,
+                status="failed",
+                input_tokens=0,
+                output_tokens=0,
+                estimated_cost_usd=0,
+                latency_ms=0,
+                retries=0,
+            )
+        return real_repair_source(
+            strategy_id,
+            source,
+            findings,
+            test_result,
+            llm_client,
+        )
+
+    monkeypatch.setattr(upload_runner, "repair_source", repair)
+    run_id = _create_upload_run(client)
+
+    assert client.post(f"/api/v1/runs/{run_id}/start").status_code == 200
+    assert client.post(
+        f"/api/v1/runs/{run_id}/strategies",
+        json={
+            "strategies": [
+                "vulnerability_specific_v1",
+                "scanner_feedback_v1",
+            ]
+        },
+    ).status_code == 200
+    report_response = client.get(f"/api/v1/runs/{run_id}/report")
+
+    assert report_response.status_code == 200
+    report = report_response.json()
+    failed, completed = report["strategy_results"]
+    assert failed["strategy_id"] == "vulnerability_specific_v1"
+    assert failed["status"] == "failed"
+    assert failed["repaired_code"] == ""
+    assert failed["repaired_syntax"] is None
+    assert failed["repaired_scan_status"] == "unavailable"
+    assert failed["repaired_tests"]["status"] == "unavailable"
+    assert failed["repaired_findings"] == []
+    assert failed["llm_usage"]["status"] == "failed"
+    assert failed["metrics"]["score_basis"] == "static_only"
+    assert failed["metrics"]["findings_after"] == failed["metrics"]["findings_before"]
+    assert failed["metrics"]["fixed_count"] == 0
+    assert failed["metrics"]["security_score"] == 0
+    assert failed["metrics"]["overall_score"] == 0
+    assert failed["metrics"]["functionality_score"] is None
+    assert completed["strategy_id"] == "scanner_feedback_v1"
+    assert completed["status"] == "completed"
+    assert report["best_overall"] == "scanner_feedback_v1"
+    attempts = {
+        item["strategy_id"]: item
+        for item in client.get(f"/api/v1/runs/{run_id}").json()["attempt_summaries"]
+    }
+    assert attempts["vulnerability_specific_v1"] == {
+        "attempt_id": failed["attempt_id"],
+        "strategy_id": "vulnerability_specific_v1",
+        "status": "failed",
+        "failure_code": (
+            "repair_error" if failure_kind == "exception" else "repair_unavailable"
+        ),
+    }
+    assert attempts["scanner_feedback_v1"]["status"] == "completed"
+
+
+def test_all_failed_upload_repairs_complete_without_winner(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app import upload_runner
+    from app.llm.contracts import LlmResult
+
+    monkeypatch.setattr(
+        upload_runner,
+        "repair_source",
+        lambda *_args, **_kwargs: LlmResult(
+            value=None,
+            source="local_fallback",
+            provider=None,
+            model=None,
+            status="failed",
+            input_tokens=0,
+            output_tokens=0,
+            estimated_cost_usd=0,
+            latency_ms=0,
+            retries=0,
+        ),
+    )
+    run_id = _create_upload_run(client)
+
+    assert client.post(f"/api/v1/runs/{run_id}/start").status_code == 200
+    assert client.post(
+        f"/api/v1/runs/{run_id}/strategies",
+        json={"strategies": ["vulnerability_specific_v1"]},
+    ).status_code == 200
+    report_response = client.get(f"/api/v1/runs/{run_id}/report")
+
+    assert report_response.status_code == 200
+    report = report_response.json()
+    assert report["status"] == "completed"
+    assert report["strategy_results"][0]["status"] == "failed"
+    assert report["best_overall"] is None
+    assert report["best_efficiency"] is None
+    run = client.get(f"/api/v1/runs/{run_id}").json()
+    assert run["status"] == "completed"
+    assert run["attempt_summaries"][0]["status"] == "failed"
+    assert run["attempt_summaries"][0]["failure_code"] == "repair_unavailable"

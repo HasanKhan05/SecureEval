@@ -8,6 +8,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.enums import JobStatus, Mode, StrategyId
+from app.llm.contracts import LlmResult, RepairProposal
 from app.models import RunRecord
 from app.repairs import repair_source
 from app.reports import build_report, save_report
@@ -250,15 +251,71 @@ def execute_upload_repairs(
                 raise RuntimeError("single_python_file_required")
             source_file = source_files[0]
             strategy_id = StrategyId(strategy_value)
-            repair = repair_source(
-                strategy_id,
-                baseline_source,
-                baseline_findings,
-                baseline_tests,
-                dependencies.llm_client,
-            )
+            try:
+                repair = repair_source(
+                    strategy_id,
+                    baseline_source,
+                    baseline_findings,
+                    baseline_tests,
+                    dependencies.llm_client,
+                )
+            except Exception as exc:
+                usage = LlmUsage(
+                    source="local_fallback",
+                    provider=None,
+                    model=None,
+                    status="failed",
+                    input_tokens=0,
+                    output_tokens=0,
+                    estimated_cost_usd=0,
+                    latency_ms=0,
+                    retries=0,
+                )
+                results.append(
+                    _failed_repair_result(
+                        attempt_id=attempt_id,
+                        strategy_id=strategy_id,
+                        baseline_findings=baseline_findings,
+                        baseline_scan_status=baseline_scan_status,
+                        baseline_syntax=baseline_syntax,
+                        usage=usage,
+                        summary="Repair attempt failed before producing a candidate.",
+                        limitation=f"Repair failed with {type(exc).__name__}.",
+                    )
+                )
+                if not _mark_attempt_failed(
+                    run_id,
+                    attempt_id,
+                    "repair_error",
+                    session_factory,
+                ):
+                    return
+                continue
             if repair.value is None:
-                raise RuntimeError(f"Repair unavailable for {strategy_value}.")
+                usage = _llm_usage(repair)
+                results.append(
+                    _failed_repair_result(
+                        attempt_id=attempt_id,
+                        strategy_id=strategy_id,
+                        baseline_findings=baseline_findings,
+                        baseline_scan_status=baseline_scan_status,
+                        baseline_syntax=baseline_syntax,
+                        usage=usage,
+                        summary=(
+                            "Repair provider returned status "
+                            f"{repair.status} without a candidate."
+                        ),
+                        limitation="No candidate repair was produced or rescanned.",
+                    )
+                )
+                if not _mark_attempt_failed(
+                    run_id,
+                    attempt_id,
+                    "repair_unavailable",
+                    session_factory,
+                ):
+                    return
+                continue
             repaired_code = repair.value.repaired_code
             if len(repaired_code) > MAX_REPAIRED_SOURCE_CHARS:
                 raise RuntimeError("Repaired source exceeded the bounded size limit.")
@@ -409,3 +466,81 @@ def execute_upload_repairs(
         fail_run(session_factory, run_id, "repair_pipeline_failed", str(exc))
     finally:
         _cleanup_if_terminal(session_factory, dependencies, run_id)
+
+
+def _llm_usage(result: LlmResult[RepairProposal]) -> LlmUsage:
+    return LlmUsage(
+        source=result.source,
+        provider=result.provider,
+        model=result.model,
+        status=result.status,
+        input_tokens=result.input_tokens,
+        output_tokens=result.output_tokens,
+        estimated_cost_usd=result.estimated_cost_usd,
+        latency_ms=result.latency_ms,
+        retries=result.retries,
+    )
+
+
+def _failed_repair_result(
+    *,
+    attempt_id: str,
+    strategy_id: StrategyId,
+    baseline_findings: list[Finding],
+    baseline_scan_status: str,
+    baseline_syntax: SyntaxValidation,
+    usage: LlmUsage,
+    summary: str,
+    limitation: str,
+) -> StrategyResult:
+    metrics = score_static_strategy(
+        StaticEvidenceSnapshot(
+            findings_count=len(baseline_findings),
+            scan_status=baseline_scan_status,
+            syntax_valid=baseline_syntax.valid,
+        ),
+        StaticEvidenceSnapshot(
+            findings_count=len(baseline_findings),
+            scan_status="unavailable",
+            syntax_valid=False,
+            cost_usd=usage.estimated_cost_usd,
+            latency_ms=usage.latency_ms,
+        ),
+    )
+    return StrategyResult(
+        attempt_id=attempt_id,
+        strategy_id=strategy_id,
+        status=JobStatus.FAILED,
+        repaired_code="",
+        repair_summary=summary,
+        limitations=[limitation],
+        repaired_findings=[],
+        repaired_scan_status="unavailable",
+        repaired_syntax=None,
+        repaired_tests=unavailable_functional_tests(),
+        llm_usage=usage,
+        review=(
+            "No repair candidate was produced. Uploaded code was not executed or "
+            "rescanned for this failed attempt."
+        ),
+        metrics=metrics,
+    )
+
+
+def _mark_attempt_failed(
+    run_id: str,
+    attempt_id: str,
+    failure_code: str,
+    session_factory: sessionmaker[Session],
+) -> bool:
+    with session_factory() as session:
+        if run_cancelled(session, run_id):
+            return False
+        record = session.get(RunRecord, run_id)
+        if record is None:
+            return False
+        matching = next(item for item in record.attempts if item.attempt_id == attempt_id)
+        matching.status = JobStatus.FAILED.value
+        matching.failure_code = failure_code
+        session.commit()
+    return True
