@@ -73,3 +73,23 @@ def test_build_report_selects_winners_without_using_explanation_text() -> None:
     assert report.best_efficiency == StrategyId.SCANNER_FEEDBACK
     assert report.explanation_source == "local_fallback"
     assert any("portfolio-metrics-v1" in item for item in report.limitations)
+
+def test_build_report_excludes_unavailable_scanner_evidence_from_winners() -> None:
+    unavailable = _strategy(StrategyId.SCANNER_FEEDBACK, 100)
+    unavailable.repaired_scan_status = "unavailable"
+
+    report = build_report(
+        run_id="run_" + "b" * 32,
+        mode=Mode.BENCHMARK,
+        baseline_source="print('baseline')\n",
+        baseline_findings=[],
+        baseline_tests=unavailable.repaired_tests,
+        strategy_results=[unavailable],
+        explanation="No ranking may be inferred from unavailable evidence.",
+        explanation_source="local_fallback",
+        limitations=["Scanner evidence was unavailable."],
+        created_at=datetime(2026, 8, 27, tzinfo=UTC),
+    )
+
+    assert report.best_overall is None
+    assert report.best_efficiency is None

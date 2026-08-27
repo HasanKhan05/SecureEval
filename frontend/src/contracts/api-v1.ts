@@ -282,6 +282,7 @@ export interface StrategyResult {
   repair_summary: string;
   limitations: string[];
   repaired_findings: Finding[];
+  repaired_scan_status: ToolStatus;
   repaired_tests: TestExecution;
   llm_usage: LlmUsage;
   review: string;
@@ -303,6 +304,7 @@ export interface RunReport {
   mode: Mode;
   baseline_source: string;
   baseline_findings: Finding[];
+  baseline_scan_status: ToolStatus;
   baseline_tests: TestExecution;
   strategy_results: StrategyResult[];
   best_overall: StrategyId | null;

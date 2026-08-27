@@ -157,6 +157,7 @@ def build_report(
     mode: Mode,
     baseline_source: str,
     baseline_findings: list[Finding],
+    baseline_scan_status: str = "completed",
     baseline_tests: TestExecution,
     strategy_results: list[StrategyResult],
     explanation: str,
@@ -169,6 +170,7 @@ def build_report(
         for item in strategy_results
         if item.status == JobStatus.COMPLETED
         and item.repaired_tests.status == "completed"
+        and item.repaired_scan_status == "completed"
     ]
     ranking = rank_strategies(
         [
@@ -191,6 +193,7 @@ def build_report(
         mode=mode,
         baseline_source=baseline_source,
         baseline_findings=baseline_findings,
+        baseline_scan_status=baseline_scan_status,
         baseline_tests=baseline_tests,
         strategy_results=strategy_results,
         best_overall=ranking.best_overall,

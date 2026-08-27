@@ -97,7 +97,23 @@ try {
     throw new Error(`Winner did not survive refresh: ${winner} -> ${persistedWinner}`)
   }
 
-  console.log('Real T-01 benchmark workflow and refresh persistence verified.')
+  await page.route('http://127.0.0.1:8000/api/v1/**', route => route.abort())
+  await page.evaluate(() => localStorage.clear())
+  await page.goto('http://127.0.0.1:8443/', { waitUntil: 'networkidle' })
+  await page.getByRole('button', { name: /Start Demo/ }).click()
+  await page.getByText('User Login Service', { exact: true }).click()
+  await page.getByRole('button', { name: /Run Benchmark Task/ }).click()
+  await page.getByRole('button', { name: /Generate Code/ }).click()
+  await page.getByRole('button', { name: /Configure Security Scan/ }).click()
+  await page.getByText('Injection', { exact: true }).first().click()
+  await page.getByRole('button', { name: /Run Security Analysis/ }).click()
+  await page.getByRole('alert').waitFor({ timeout: 8_000 })
+  await page.getByText('Live local evaluation · T-01', { exact: true }).waitFor()
+  if (await page.getByText('Demo analysis complete', { exact: true }).count()) {
+    throw new Error('T-01 API failure fell back to simulated analysis.')
+  }
+
+  console.log('Real T-01 workflow, refresh persistence, and API failure state verified.')
 } finally {
   await browser.close()
   await server.close()

@@ -13,7 +13,7 @@ from app.llm.client import LlmClient
 from app.models import RunRecord
 from app.repairs import repair_source
 from app.reports import build_report, save_report
-from app.schemas import Finding, LlmUsage, StrategyResult, TestExecution
+from app.schemas import Finding, LlmUsage, StrategyResult, TestExecution, ToolStatus
 from app.scoring import EvidenceSnapshot, score_strategy
 from app.tools.bandit import run_bandit
 from app.tools.pytest_runner import run_pytest
@@ -34,6 +34,15 @@ def _now() -> str:
 
 def _progress(record: RunRecord) -> dict[str, object]:
     return json.loads(record.progress_json or "{}")
+
+
+def _scan_status(*statuses: ToolStatus) -> ToolStatus:
+    if all(status == "completed" for status in statuses):
+        return "completed"
+    for status in ("cancelled", "timeout", "unavailable"):
+        if status in statuses:
+            return status
+    return "failed"
 
 
 def _set_stage(
@@ -103,6 +112,7 @@ def execute_baseline(
             record = session.get(RunRecord, run_id)
             if record is None or record.status != JobStatus.RUNNING.value:
                 return
+            selected_categories = set(json.loads(record.scan_categories_json))
             _set_stage(session, record, "baseline_testing")
         tests = run_pytest(tests_path, source_path, dependencies.tool_timeout_seconds)
 
@@ -120,7 +130,12 @@ def execute_baseline(
         semgrep = run_semgrep(source_path, dependencies.tool_timeout_seconds)
         if tests.status != "completed" or bandit.status != "completed" or semgrep.status != "completed":
             raise RuntimeError("A baseline analysis tool did not complete.")
-        findings = [*bandit.findings, *semgrep.findings]
+        scan_status = _scan_status(bandit.status, semgrep.status)
+        findings = [
+            item
+            for item in [*bandit.findings, *semgrep.findings]
+            if item.category.value in selected_categories
+        ]
 
         with session_factory() as session:
             if _cancelled(session, run_id):
@@ -139,6 +154,7 @@ def execute_baseline(
                         item.model_dump(mode="json") for item in findings
                     ],
                     "baseline_tests": tests.model_dump(mode="json"),
+                    "baseline_scan_status": scan_status,
                     "current_strategy": None,
                 },
             )
@@ -166,6 +182,8 @@ def execute_repairs(
             baseline_tests = TestExecution.model_validate(
                 progress["baseline_tests"]
             )
+            baseline_scan_status = progress.get("baseline_scan_status", "completed")
+            selected_categories = set(json.loads(record.scan_categories_json))
             attempts = [
                 (item.attempt_id, item.strategy_id) for item in record.attempts
             ]
@@ -227,12 +245,12 @@ def execute_repairs(
                 )
             bandit = run_bandit(source_path, dependencies.tool_timeout_seconds)
             semgrep = run_semgrep(source_path, dependencies.tool_timeout_seconds)
-            repaired_findings = [*bandit.findings, *semgrep.findings]
-            scan_status = (
-                "completed"
-                if bandit.status == semgrep.status == "completed"
-                else "failed"
-            )
+            repaired_findings = [
+                item
+                for item in [*bandit.findings, *semgrep.findings]
+                if item.category.value in selected_categories
+            ]
+            scan_status = _scan_status(bandit.status, semgrep.status)
             metrics = score_strategy(
                 EvidenceSnapshot(
                     len(baseline_findings),
@@ -270,6 +288,7 @@ def execute_repairs(
                     repair_summary=repair.value.summary,
                     limitations=repair.value.limitations,
                     repaired_findings=repaired_findings,
+                    repaired_scan_status=scan_status,
                     repaired_tests=repaired_tests,
                     llm_usage=usage,
                     review=(
@@ -303,6 +322,7 @@ def execute_repairs(
                 mode=mode,
                 baseline_source=baseline_source,
                 baseline_findings=baseline_findings,
+                baseline_scan_status=baseline_scan_status,
                 baseline_tests=baseline_tests,
                 strategy_results=results,
                 explanation=(

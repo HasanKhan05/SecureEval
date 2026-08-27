@@ -1,7 +1,15 @@
+import json
+
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+
+from app.models import RunRecord
 
 
-def test_benchmark_run_completes_with_real_evidence(client: TestClient) -> None:
+def test_benchmark_run_completes_with_real_evidence(
+    client: TestClient, database_url: str
+) -> None:
     created = client.post(
         "/api/v1/runs",
         json={
@@ -43,13 +51,44 @@ def test_benchmark_run_completes_with_real_evidence(client: TestClient) -> None:
         "llm",
         "local_fallback",
     }
+    assert report["baseline_scan_status"] == "completed"
+    assert report["strategy_results"][0]["repaired_scan_status"] == "completed"
 
+    with Session(create_engine(database_url)) as session:
+        record = session.get(RunRecord, run_id)
+        assert record is not None
+        manifest = json.loads(record.manifest_json)
+    assert manifest["strategy_ids"] == ["scanner_feedback_v1"]
 
-    completed_progress = client.get(
-        f"/api/v1/runs/{run_id}/progress"
-    ).json()
+    completed_progress = client.get(f"/api/v1/runs/{run_id}/progress").json()
     assert completed_progress["status"] == "completed"
     assert completed_progress["stage"] == "completed"
+
+
+def test_selected_categories_filter_reported_and_scored_findings(
+    client: TestClient,
+) -> None:
+    created = client.post(
+        "/api/v1/runs",
+        json={
+            "mode": "benchmark",
+            "task_id": "T-01",
+            "scan_categories": ["secrets"],
+            "strategies": ["vulnerability_specific_v1"],
+        },
+    ).json()
+    run_id = created["run_id"]
+
+    assert client.post(f"/api/v1/runs/{run_id}/start").status_code == 200
+    assert client.post(
+        f"/api/v1/runs/{run_id}/strategies",
+        json={"strategies": ["scanner_feedback_v1"]},
+    ).status_code == 200
+    report = client.get(f"/api/v1/runs/{run_id}/report").json()
+
+    assert report["baseline_findings"] == []
+    assert report["strategy_results"][0]["metrics"]["findings_before"] == 0
+
 
 def test_baseline_start_and_strategy_configuration_are_each_one_shot(
     client: TestClient,

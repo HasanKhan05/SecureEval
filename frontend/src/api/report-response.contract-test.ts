@@ -19,6 +19,7 @@ const reportFixture = {
   status: "completed",
   mode: "benchmark",
   baseline_source: "def lookup(): pass\n",
+  baseline_scan_status: "completed",
   baseline_findings: [
     {
       finding_id: "finding_00000000000000000000000000000000",
@@ -50,6 +51,7 @@ const reportFixture = {
       repaired_code: "def lookup(): pass\n",
       repair_summary: "Parameterized the SQL query.",
       limitations: ["Controlled T-01 repair."],
+      repaired_scan_status: "completed",
       repaired_findings: [],
       repaired_tests: {
         status: "completed",

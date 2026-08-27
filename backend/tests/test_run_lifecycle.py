@@ -33,6 +33,7 @@ def test_create_read_start_cancel_lifecycle_is_persistent(
     assert cancelled_response.status_code == 200
     assert cancelled_response.json()["status"] == "cancelled"
     assert cancelled_response.json()["attempt_summaries"][0]["status"] == "cancelled"
+    assert client.get(f"/api/v1/runs/{run_id}/progress").json()["stage"] == "cancelled"
     work_root = client.app.state.runner_dependencies.work_root
     assert not (work_root / run_id).exists()
 

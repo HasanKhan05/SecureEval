@@ -202,6 +202,7 @@ def configure_strategies(
             "invalid_state_transition",
             "Strategies cannot be configured.",
         )
+    selected_strategies = selection.expanded()
     record.attempts.clear()
     session.flush()
     record.attempts.extend(
@@ -211,8 +212,14 @@ def configure_strategies(
             strategy_id=strategy.value,
             status=JobStatus.RUNNING.value,
         )
-        for index, strategy in enumerate(selection.expanded())
+        for index, strategy in enumerate(selected_strategies)
     )
+    manifest = json.loads(record.manifest_json)
+    manifest["strategy_ids"] = [item.value for item in selected_strategies]
+    record.manifest_json = json.dumps(
+        manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    )
+    record.manifest_hash = manifest_hash(record.manifest_json)
     progress = json.loads(record.progress_json or "{}")
     progress["current_strategy"] = record.attempts[0].strategy_id
     record.progress_json = json.dumps(progress, separators=(",", ":"))
@@ -228,6 +235,7 @@ def cancel_run(session: Session, run_id: str) -> RunResponse:
     if record.status not in {JobStatus.QUEUED.value, JobStatus.RUNNING.value}:
         raise APIError(409, "invalid_state_transition", "Run cannot be cancelled.")
     record.status = JobStatus.CANCELLED.value
+    record.stage = "cancelled"
     record.updated_at = _now()
     for attempt in record.attempts:
         if attempt.status in {JobStatus.QUEUED.value, JobStatus.RUNNING.value}:

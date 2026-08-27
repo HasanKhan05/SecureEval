@@ -50,7 +50,7 @@ function ProgressBar({ progress }: { progress: RunProgress | null }) {
   )
 }
 
-export function LiveAnalysisScreen({ progress, scans, error, onDone, onBack, onCancel }: { progress: RunProgress | null; scans: ScanCategoryId[]; error: string | null; onDone: () => void; onBack: () => void; onCancel: () => void }) {
+export function LiveAnalysisScreen({ progress, scans, error, terminalMessage, onDone, onBack, onCancel }: { progress: RunProgress | null; scans: ScanCategoryId[]; error: string | null; terminalMessage: string | null; onDone: () => void; onBack: () => void; onCancel: () => void }) {
   const ready = progress?.stage === 'awaiting_strategy'
   const terminal = progress?.status === 'failed' || progress?.status === 'cancelled'
   return (
@@ -66,11 +66,11 @@ export function LiveAnalysisScreen({ progress, scans, error, onDone, onBack, onC
           })}
         </div>
         {ready && <div className="mt-6 rounded-lg border border-emerald-200 bg-emerald-50 p-4"><div className="font-display font-black uppercase text-emerald-900">Baseline evidence saved</div><p className="mt-1 text-xs text-emerald-800">Functional test and scanner evidence is saved. Choose repair strategies to continue.</p></div>}
-        {terminal && <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{progress?.stage === 'cancelled' ? 'This local run was cancelled. You can return and start another.' : 'The evaluator could not finish this run. Review the error above and retry.'}</div>}
+        {terminal && <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{progress?.status === 'cancelled' ? 'This local run was cancelled. You can return and start another.' : terminalMessage ?? 'The evaluator could not finish this run. Return to scan configuration and retry.'}</div>}
         <div className="mt-7 flex flex-wrap justify-between gap-3">
           <button onClick={onBack} className="rounded border border-slate-300 bg-white px-4 py-2.5 font-display text-xs font-bold uppercase tracking-widest text-slate-700">Back</button>
           <div className="flex gap-3">
-            {!ready && !terminal && <button onClick={onCancel} className="rounded border border-rose-200 bg-rose-50 px-4 py-2.5 font-display text-xs font-bold uppercase tracking-widest text-rose-700">Cancel</button>}
+            {progress && !ready && !terminal && <button onClick={onCancel} className="rounded border border-rose-200 bg-rose-50 px-4 py-2.5 font-display text-xs font-bold uppercase tracking-widest text-rose-700">Cancel</button>}
             <button disabled={!ready} onClick={onDone} className="rounded bg-[#1B3A6B] px-5 py-2.5 font-display text-xs font-bold uppercase tracking-widest text-white disabled:cursor-not-allowed disabled:opacity-40">Select Repair Strategy</button>
           </div>
         </div>
@@ -79,7 +79,7 @@ export function LiveAnalysisScreen({ progress, scans, error, onDone, onBack, onC
   )
 }
 
-export function LiveComparisonScreen({ progress, report, strategies, error, onDone, onCancel }: { progress: RunProgress | null; report: RunReport | null; strategies: StrategyId[]; error: string | null; onDone: () => void; onCancel: () => void }) {
+export function LiveComparisonScreen({ progress, report, strategies, error, terminalMessage, onDone, onCancel, onBack }: { progress: RunProgress | null; report: RunReport | null; strategies: StrategyId[]; error: string | null; terminalMessage: string | null; onDone: () => void; onCancel: () => void; onBack: () => void }) {
   useEffect(() => { if (report) document.title = 'SecureEval · Results ready' }, [report])
   return (
     <Shell>
@@ -94,12 +94,14 @@ export function LiveComparisonScreen({ progress, report, strategies, error, onDo
               <div key={id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                 <div className="font-display font-black uppercase text-[#111118]">{STRATEGY_META[id].title}</div>
                 <div className="mt-1 font-mono text-[10px] uppercase text-slate-400">{result ? 'Persisted result' : progress?.current_strategy === id ? 'Running now' : 'Queued'}</div>
-                {result && <div className="mt-4 grid grid-cols-2 gap-2 text-xs"><span>Tests</span><b className="text-right">{result.repaired_tests.passed} passed</b><span>Findings</span><b className="text-right">{result.metrics.findings_before} → {result.metrics.findings_after}</b><span>Overall</span><b className="text-right text-[#1B3A6B]">{result.metrics.overall_score.toFixed(1)}</b><span>Latency</span><b className="text-right">{(result.llm_usage.latency_ms / 1000).toFixed(2)}s</b></div>}
+                {result && <div className="mt-4 grid grid-cols-2 gap-2 text-xs"><span>Tests</span><b className="text-right">{result.repaired_tests.status === 'completed' ? `${result.repaired_tests.passed} passed` : `Unavailable (${result.repaired_tests.status})`}</b><span>Findings</span><b className="text-right">{result.repaired_scan_status === 'completed' ? `${result.metrics.findings_before} → ${result.metrics.findings_after}` : `Unavailable (${result.repaired_scan_status})`}</b><span>Overall</span><b className="text-right text-[#1B3A6B]">{result.metrics.overall_score.toFixed(1)}</b><span>Latency</span><b className="text-right">{(result.llm_usage.latency_ms / 1000).toFixed(2)}s</b></div>}
               </div>
             )
           })}
         </div>
+        {(progress?.status === 'failed' || progress?.status === 'cancelled') && <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{progress.status === 'cancelled' ? 'This repair run was cancelled.' : terminalMessage ?? 'The repair pipeline failed.'}</div>}
         <div className="mt-7 flex justify-end gap-3">
+          {(error || progress?.status === 'failed' || progress?.status === 'cancelled') && <button onClick={onBack} className="rounded border border-slate-300 bg-white px-4 py-2.5 font-display text-xs font-bold uppercase tracking-widest text-slate-700">Back to Scan Configuration</button>}
           {!report && progress?.status !== 'failed' && progress?.status !== 'cancelled' && <button onClick={onCancel} className="rounded border border-rose-200 bg-rose-50 px-4 py-2.5 font-display text-xs font-bold uppercase tracking-widest text-rose-700">Cancel</button>}
           <button disabled={!report} onClick={onDone} className="rounded bg-[#1B3A6B] px-5 py-2.5 font-display text-xs font-bold uppercase tracking-widest text-white disabled:cursor-not-allowed disabled:opacity-40">View Final Results</button>
         </div>
@@ -119,8 +121,8 @@ export function LiveResultsScreen({ report, onRestart }: { report: RunReport; on
     <Shell>
       <Header eyebrow="Persisted local report · Sample run" title="Evaluation Results" description="This dashboard reflects real tools and deterministic scoring for the local T-01 sample. It does not certify that code is secure." />
       <div className="mb-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Metric label="Baseline tests" value={`${report.baseline_tests.passed} passed`} />
-        <Metric label="Baseline findings" value={String(report.baseline_findings.length)} />
+        <Metric label="Baseline tests" value={report.baseline_tests.status === 'completed' ? `${report.baseline_tests.passed} passed` : `Unavailable (${report.baseline_tests.status})`} />
+        <Metric label="Baseline findings" value={report.baseline_scan_status === 'completed' ? String(report.baseline_findings.length) : `Unavailable (${report.baseline_scan_status})`} />
         <Metric label="Best overall" value={overall ? STRATEGY_META[overall.strategy_id].title : 'N/A'} testId="best-overall-strategy" />
         <Metric label="Best efficiency" value={efficient ? STRATEGY_META[efficient.strategy_id].title : 'N/A'} />
       </div>
@@ -134,7 +136,7 @@ export function LiveResultsScreen({ report, onRestart }: { report: RunReport; on
 
       <section className="mb-7 overflow-hidden rounded-xl border border-black/[0.08] bg-white shadow-sm">
         <div className="border-b border-slate-100 p-5 sm:p-7"><h2 className="font-display text-xl font-black uppercase">Repair strategy results</h2></div>
-        <div className="overflow-x-auto"><table className="min-w-[850px] w-full text-left text-xs"><thead className="bg-slate-50 font-mono text-[9px] uppercase tracking-wider text-slate-400"><tr><th className="p-4">Strategy</th><th className="p-4">Tests</th><th className="p-4">Findings</th><th className="p-4">Tokens</th><th className="p-4">Cost</th><th className="p-4">Latency</th><th className="p-4">Overall</th><th className="p-4">Efficiency</th></tr></thead><tbody>{report.strategy_results.map(result => <tr key={result.attempt_id} className="border-t border-slate-100"><td className="p-4 font-bold">{STRATEGY_META[result.strategy_id].title}</td><td className="p-4">{result.repaired_tests.passed} passed / {result.repaired_tests.failed} failed</td><td className="p-4">{result.metrics.findings_before} → {result.metrics.findings_after}</td><td className="p-4">{(result.llm_usage.input_tokens + result.llm_usage.output_tokens).toLocaleString()}</td><td className="p-4">${result.llm_usage.estimated_cost_usd.toFixed(4)}</td><td className="p-4">{(result.llm_usage.latency_ms / 1000).toFixed(2)}s</td><td className="p-4 font-bold text-[#1B3A6B]">{result.metrics.overall_score.toFixed(1)}</td><td className="p-4">{result.metrics.efficiency_score.toFixed(2)}</td></tr>)}</tbody></table></div>
+        <div className="overflow-x-auto"><table className="min-w-[850px] w-full text-left text-xs"><thead className="bg-slate-50 font-mono text-[9px] uppercase tracking-wider text-slate-400"><tr><th className="p-4">Strategy</th><th className="p-4">Tests</th><th className="p-4">Findings</th><th className="p-4">Tokens</th><th className="p-4">Cost</th><th className="p-4">Latency</th><th className="p-4">Overall</th><th className="p-4">Efficiency</th></tr></thead><tbody>{report.strategy_results.map(result => <tr key={result.attempt_id} className="border-t border-slate-100"><td className="p-4 font-bold">{STRATEGY_META[result.strategy_id].title}</td><td className="p-4">{result.repaired_tests.passed} passed / {result.repaired_tests.failed} failed</td><td className="p-4">{result.repaired_scan_status === 'completed' ? `${result.metrics.findings_before} → ${result.metrics.findings_after}` : `Unavailable (${result.repaired_scan_status})`}</td><td className="p-4">{(result.llm_usage.input_tokens + result.llm_usage.output_tokens).toLocaleString()}</td><td className="p-4">${result.llm_usage.estimated_cost_usd.toFixed(4)}</td><td className="p-4">{(result.llm_usage.latency_ms / 1000).toFixed(2)}s</td><td className="p-4 font-bold text-[#1B3A6B]">{result.metrics.overall_score.toFixed(1)}</td><td className="p-4">{result.metrics.efficiency_score.toFixed(2)}</td></tr>)}</tbody></table></div>
       </section>
 
       <section className="rounded-xl border border-[#1B3A6B]/20 bg-[#1B3A6B]/5 p-5 sm:p-7">

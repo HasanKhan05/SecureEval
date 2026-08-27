@@ -164,6 +164,7 @@ class StrategyResult(StrictModel):
     repair_summary: str = Field(min_length=1, max_length=4000)
     limitations: list[str] = Field(max_length=20)
     repaired_findings: list[Finding]
+    repaired_scan_status: ToolStatus = "completed"
     repaired_tests: TestExecution
     llm_usage: LlmUsage
     review: str = Field(min_length=1, max_length=8000)
@@ -203,6 +204,7 @@ class RunReport(StrictModel):
     mode: Mode
     baseline_source: str = Field(max_length=200000)
     baseline_findings: list[Finding]
+    baseline_scan_status: ToolStatus = "completed"
     baseline_tests: TestExecution
     strategy_results: list[StrategyResult]
     best_overall: StrategyId | None

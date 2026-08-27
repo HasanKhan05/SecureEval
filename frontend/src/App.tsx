@@ -32,6 +32,7 @@ interface DemoSession {
   selectedScans: ScanCategoryId[]
   selectedStrategies: StrategyId[]
   runId: string | null
+  liveRequested: boolean
 }
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
@@ -75,6 +76,7 @@ const defaultDemoSession = (): DemoSession => ({
   selectedScans: [],
   selectedStrategies: [...STRATEGY_IDS],
   runId: null,
+  liveRequested: false,
 })
 
 function loadDemoSession(): DemoSession {
@@ -94,6 +96,7 @@ function loadDemoSession(): DemoSession {
     const customPrompt = typeof saved.customPrompt === 'string' ? saved.customPrompt.slice(0, 1000) : ''
     const uploadedCode = typeof saved.uploadedCode === 'string' ? saved.uploadedCode.slice(0, 100_000) : ''
     const runId = typeof saved.runId === 'string' && /^run_[0-9a-f]{32}$/.test(saved.runId) ? saved.runId : null
+    const liveRequested = saved.liveRequested === true
     const rawMeta = saved.uploadMeta && typeof saved.uploadMeta === 'object' ? saved.uploadMeta : null
     const uploadMeta: UploadMeta | null = rawMeta ? {
       fileName: typeof rawMeta.fileName === 'string' ? rawMeta.fileName.slice(0, 255) : '',
@@ -108,7 +111,7 @@ function loadDemoSession(): DemoSession {
     if (screen >= 4 && selectedScans.length === 0) screen = 3
     if (screen >= 6 && selectedStrategies.length === 0) screen = 5
 
-    return { screen, mode, selectedTaskId, customPrompt, uploadedCode, uploadMeta, selectedScans, selectedStrategies, runId }
+    return { screen, mode, selectedTaskId, customPrompt, uploadedCode, uploadMeta, selectedScans, selectedStrategies, runId, liveRequested }
   } catch {
     return fallback
   }
@@ -1882,8 +1885,8 @@ export default function App() {
   const [uploadMeta, setUploadMeta] = useState<UploadMeta | null>(initialSession.uploadMeta)
   const [selectedScans, setSelectedScans] = useState<ScanCategoryId[]>(initialSession.selectedScans)
   const [selectedStrategies, setSelectedStrategies] = useState<StrategyId[]>(initialSession.selectedStrategies)
-  const live = useLiveBenchmark(initialSession.runId)
-  const isLiveBenchmark = mode === 'benchmark' && selectedTask?.id === 'T-01' && live.runId !== null
+  const live = useLiveBenchmark(initialSession.runId, initialSession.liveRequested)
+  const isLiveBenchmark = mode === 'benchmark' && selectedTask?.id === 'T-01' && live.requested
 
   useEffect(() => {
     const session: DemoSession = {
@@ -1896,13 +1899,14 @@ export default function App() {
       selectedScans,
       selectedStrategies,
       runId: live.runId,
+      liveRequested: live.requested,
     }
     try {
       window.localStorage.setItem(DEMO_SESSION_KEY, JSON.stringify(session))
     } catch {
       // Private browsing or storage limits must never break the local demo.
     }
-  }, [screen, mode, selectedTask, customPrompt, uploadedCode, uploadMeta, selectedScans, selectedStrategies, live.runId])
+  }, [screen, mode, selectedTask, customPrompt, uploadedCode, uploadMeta, selectedScans, selectedStrategies, live.runId, live.requested])
 
   const handleBenchmark = (task: BenchmarkTask) => { setSelectedTask(task); setCustomPrompt(''); setUploadedCode(''); setUploadMeta(null); setMode('benchmark'); setScreen(2) }
   const handleCustom = (prompt: string) => { setSelectedTask(null); setCustomPrompt(prompt); setUploadedCode(''); setUploadMeta(null); setMode('custom'); setScreen(2) }
@@ -1938,7 +1942,7 @@ export default function App() {
           if (mode === 'benchmark' && selectedTask?.id === 'T-01') void live.start('T-01', scans)
         }} />}
         {screen === 4 && (isLiveBenchmark
-          ? <LiveAnalysisScreen progress={live.progress} scans={selectedScans} error={live.error} onDone={() => setScreen(5)} onBack={() => setScreen(3)} onCancel={() => void live.cancel()} />
+          ? <LiveAnalysisScreen progress={live.progress} scans={selectedScans} error={live.error} terminalMessage={live.terminalMessage} onDone={() => setScreen(5)} onBack={() => setScreen(3)} onCancel={() => void live.cancel()} />
           : <AnalysisScreen mode={mode} task={selectedTask} scans={selectedScans} onDone={() => setScreen(5)} onBack={() => setScreen(3)} />)}
         {screen === 5 && <RepairStrategyScreen initialSelected={selectedStrategies} onSelect={strats => {
           setSelectedStrategies(strats)
@@ -1946,7 +1950,7 @@ export default function App() {
           if (isLiveBenchmark) void live.configure(strats)
         }} />}
         {screen === 6 && (isLiveBenchmark
-          ? <LiveComparisonScreen progress={live.progress} report={live.report} strategies={selectedStrategies} error={live.error} onDone={() => setScreen(7)} onCancel={() => void live.cancel()} />
+          ? <LiveComparisonScreen progress={live.progress} report={live.report} strategies={selectedStrategies} error={live.error} terminalMessage={live.terminalMessage} onDone={() => setScreen(7)} onCancel={() => void live.cancel()} onBack={() => setScreen(3)} />
           : <ComparisonScreen mode={mode} strategies={selectedStrategies} onDone={() => setScreen(7)} />)}
         {screen === 7 && (isLiveBenchmark
           ? live.report
