@@ -107,3 +107,31 @@ def test_stored_artifact_does_not_expose_source_or_absolute_path() -> None:
         "created_at",
         "expires_at",
     }
+
+
+def test_store_retries_transient_windows_directory_rename(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.uploads import store as store_module
+
+    root = tmp_path / "artifacts"
+    store = ArtifactStore(root)
+    original_replace = store_module.os.replace
+    calls = 0
+
+    def transient_replace(source: Path, destination: Path) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            error = PermissionError("transient Windows directory lock")
+            error.winerror = 5
+            raise error
+        original_replace(source, destination)
+
+    monkeypatch.setattr(store_module.os, "replace", transient_replace)
+    monkeypatch.setattr(store_module, "sleep", lambda _seconds: None, raising=False)
+
+    artifact = store.store(_validated_source(), UploadPurpose.UPLOADED_CODE)
+
+    assert calls == 2
+    assert store.source_path(artifact.upload_id).is_dir()
