@@ -25,8 +25,8 @@ export type ToolStatus =
   | "unavailable"
   | "cancelled";
 
-export type EvaluationKind = "benchmark_full" | "upload_static";
-export type ScoreBasis = "full" | "static_only";
+export type EvaluationKind = "benchmark_full" | "upload_static" | "custom_prompt_smoke";
+export type ScoreBasis = "full" | "static_only" | "static_smoke";
 
 export type RunStage =
   | "queued"
@@ -321,6 +321,7 @@ export interface RunReport {
   baseline_scan_status: ToolStatus;
   baseline_syntax: SyntaxValidation | null;
   baseline_tests: TestExecution;
+  generation_usage: LlmUsage | null;
   strategy_results: StrategyResult[];
   best_overall: StrategyId | null;
   best_efficiency: StrategyId | null;

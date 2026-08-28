@@ -1,6 +1,6 @@
 # SecureEval
 
-SecureEval is a functional local AI/cybersecurity portfolio project for comparing code-repair strategies. It preserves the supplied Figma interface and connects the **T-01 User Login Service** benchmark to a real local evaluation pipeline:
+SecureEval is a functional local AI/cybersecurity portfolio project for comparing code-repair strategies. It preserves the supplied Figma interface and connects five controlled benchmarks, Custom Prompt, and Upload Code to real local workflows:
 
 - Pytest functional tests
 - Bandit and Semgrep static analysis
@@ -32,12 +32,12 @@ corepack pnpm install --frozen-lockfile
 corepack pnpm dev
 ```
 
-Open `http://localhost:8443`, choose **Benchmark Mode**, select **User Login Service (T-01)**, and continue through scanning, repair selection, comparison, and persisted results.
+Open `http://localhost:8443`, choose a mode, and continue through scanning, repair selection, comparison, and persisted results.
 
-No API key is required. Without one, repaired results are explicitly labeled `local_fallback`.
+No API key is required for the five controlled benchmarks or Upload Code. Custom Prompt requires `SECUREEVAL_LLM_API_KEY` and `SECUREEVAL_LLM_MODEL`; it never substitutes fake generated code.
 
 ## Current scope
 
-T-01 is the real backend-connected benchmark slice and the only workflow that runs real Pytest functional tests. Upload Code is a real exploratory local workflow: it validates Python syntax, runs Bandit and Semgrep static analysis, and evaluates repairs with the same non-executing checks. The remaining benchmark tasks and Custom Prompt Mode preserve the interactive portfolio UI with demo data. Uploaded code and uploaded tests are never executed.
+T-01 through T-05 are controlled repository fixtures that run real Pytest, Bandit, Semgrep, repair, scoring, and persistence. Upload Code performs non-executing syntax/static analysis. Custom Prompt makes real schema-constrained AI calls, scans the generated Python, and optionally smoke-runs it only inside restricted Docker. Smoke execution is not a trusted functional test suite or a security guarantee.
 
 See [docs/LOCAL_DEVELOPMENT.md](docs/LOCAL_DEVELOPMENT.md) for optional LLM settings and verification commands.

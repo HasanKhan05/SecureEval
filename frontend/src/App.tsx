@@ -903,6 +903,30 @@ function CodeGenerationScreen({ mode, task, customPrompt, uploadedCode, uploadMe
     )
   }
 
+  if (mode === 'custom') {
+    return (
+      <div className="min-h-[calc(100vh-56px)] px-4 md:px-10 py-8 max-w-4xl mx-auto space-y-5">
+        <div className="rounded-lg border border-violet-200 bg-violet-50 p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-[9px] font-mono text-violet-700 uppercase tracking-widest">Custom Prompt</span>
+            <ModeBadge mode="custom" />
+          </div>
+          <p className="text-sm text-slate-700 font-mono leading-relaxed">{customPrompt}</p>
+        </div>
+        <div className="animate-fade-in-up rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
+          <div className="w-12 h-12 rounded-xl bg-violet-50 border border-violet-200 flex items-center justify-center mb-4">
+            <span className="text-violet-700 text-xl">⚡</span>
+          </div>
+          <h2 className="font-display font-black text-xl uppercase tracking-tight">Real AI generation</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">When analysis starts, the local backend sends this prompt to your configured AI provider using a strict code-only response contract. The returned Python is syntax-checked, scanned, and smoke-run only inside restricted Docker.</p>
+          <p className="mt-3 text-[11px] font-mono text-amber-700">Requires SECUREEVAL_LLM_API_KEY and SECUREEVAL_LLM_MODEL. No demo code is substituted if the provider is unavailable.</p>
+          <button onClick={onDone} className="mt-7 inline-flex items-center gap-3 px-7 py-3.5 bg-[#1B3A6B] hover:bg-[#15305A] text-white font-display font-bold uppercase tracking-widest text-sm rounded transition-all hover:scale-[1.02] shadow-sm">
+            Configure Security Scan <span>→</span>
+          </button>
+        </div>
+      </div>
+    )
+  }
   return (
     <div className="min-h-[calc(100vh-56px)] px-4 md:px-10 py-8 max-w-4xl mx-auto space-y-5">
       {mode === 'benchmark' && task ? (
@@ -1885,7 +1909,7 @@ export default function App() {
   const [selectedScans, setSelectedScans] = useState<ScanCategoryId[]>(initialSession.selectedScans)
   const [selectedStrategies, setSelectedStrategies] = useState<StrategyId[]>(initialSession.selectedStrategies)
   const live = useLiveRun(initialSession.runId, initialSession.liveRequested)
-  const isLiveRun = (mode === 'benchmark' || mode === 'upload') && live.requested
+  const isLiveRun = live.requested
 
   useEffect(() => {
     const session = toPersistedDemoSession({
@@ -1942,6 +1966,8 @@ export default function App() {
             void live.startBenchmark(selectedTask.id, scans)
           } else if (mode === 'upload') {
             void live.startUpload(uploadedCode, uploadMeta?.fileName || 'uploaded_code.py', scans)
+          } else {
+            void live.startCustomPrompt(customPrompt, scans)
           }
         }} />}
         {screen === 4 && (isLiveRun

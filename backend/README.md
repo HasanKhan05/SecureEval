@@ -1,6 +1,6 @@
 # SecureEval local backend
 
-The FastAPI service powers the real T-01 portfolio workflow. It runs the controlled benchmark fixture through Pytest, Bandit, and Semgrep; applies selected repairs; rescans and retests each candidate; calculates deterministic scores; and persists the report in local SQLite storage.
+The FastAPI service powers five controlled benchmark workflows, exploratory Upload Code static analysis, and real-provider Custom Prompt generation. It runs scanners, repairs, deterministic scoring, and SQLite report persistence; controlled fixtures also run Pytest.
 
 It is a localhost-only portfolio service. Do not expose it to an untrusted network or treat its output as a security guarantee.
 
@@ -26,7 +26,7 @@ These generated paths are ignored by Git.
 
 ## Repair behavior
 
-No model credentials are required. When `SECUREEVAL_LLM_API_KEY` or `SECUREEVAL_LLM_MODEL` is empty, SecureEval uses its deterministic T-01 repair and records `local_fallback` in the report.
+Model credentials are optional for controlled benchmarks and Upload Code, which can use labeled deterministic repairs. Custom Prompt requires both `SECUREEVAL_LLM_API_KEY` and `SECUREEVAL_LLM_MODEL` and never substitutes generated or repaired code locally.
 
 An optional OpenAI-compatible endpoint can be configured with:
 
@@ -36,7 +36,7 @@ An optional OpenAI-compatible endpoint can be configured with:
 - `SECUREEVAL_LLM_INPUT_PRICE_PER_MILLION`
 - `SECUREEVAL_LLM_OUTPUT_PRICE_PER_MILLION`
 
-The backend validates structured model output. Failed, timed-out, or invalid model output falls back locally rather than being treated as valid evidence.
+The backend validates strict structured model output. In Custom Prompt, failed, timed-out, unavailable, or invalid output is reported honestly with no fallback. Generated code is never run on the host.
 
 ## Tests
 
@@ -50,4 +50,4 @@ The three `docker_live` tests cover the older isolated Docker executor and requi
 python -m pytest -m docker_live
 ```
 
-Docker is not required for the current real T-01 frontend workflow.
+Docker is not required for controlled benchmarks or Upload Code. Custom Prompt uses the Linux engine for a network-disabled, read-only, resource-limited smoke check; when Docker is unavailable, the report says so and static scanning continues.
