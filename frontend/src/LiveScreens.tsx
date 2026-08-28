@@ -11,7 +11,7 @@ export const UPLOAD_EVIDENCE_COPY = {
 } as const
 
 const BENCHMARK_EVIDENCE_COPY = {
-  eyebrow: 'Live local evaluation · T-01',
+  eyebrow: 'Live controlled benchmark',
 } as const
 
 export function getLiveEvidenceCopy(evaluationKind: 'upload_static'): typeof UPLOAD_EVIDENCE_COPY
@@ -194,7 +194,7 @@ export function LiveResultsScreen({ report, onRestart }: { report: RunReport; on
   const efficient = useMemo(() => staticEvidenceComplete ? report.strategy_results.find(item => item.strategy_id === report.best_efficiency && (!staticOnly || hasReportStaticScoreEvidence(report, item))) : undefined, [report, staticEvidenceComplete, staticOnly])
   return (
     <Shell>
-      <Header eyebrow={staticOnly ? UPLOAD_EVIDENCE_COPY.eyebrow : 'Persisted local report · Sample run'} title="Evaluation Results" description={staticOnly ? 'This exploratory upload report contains syntax and static-scanner evidence only. Uploaded code was not executed, and static analysis is not a security guarantee.' : 'This dashboard reflects real tools and deterministic scoring for the local T-01 sample. It does not certify that code is secure.'} />
+      <Header eyebrow={staticOnly ? UPLOAD_EVIDENCE_COPY.eyebrow : 'Persisted controlled benchmark'} title="Evaluation Results" description={staticOnly ? 'This exploratory upload report contains syntax and static-scanner evidence only. Uploaded code was not executed, and static analysis is not a security guarantee.' : 'This dashboard reflects real tests, scanners, repairs, and deterministic scoring for the selected controlled task. It does not certify that code is secure.'} />
       <div className="mb-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Metric label={staticOnly ? 'Baseline syntax' : 'Baseline tests'} value={staticOnly ? syntaxLabel(report.baseline_syntax) : report.baseline_tests.status === 'completed' ? `${report.baseline_tests.passed} passed` : `Unavailable (${report.baseline_tests.status})`} />
         <Metric label={staticOnly ? 'Functional tests' : 'Baseline findings'} value={staticOnly ? staticTestsLabel(report.baseline_tests.output, report.baseline_tests.status) : report.baseline_scan_status === 'completed' ? String(report.baseline_findings.length) : `Unavailable (${report.baseline_scan_status})`} />
