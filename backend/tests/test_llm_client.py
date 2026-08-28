@@ -42,6 +42,13 @@ def test_valid_provider_response_tracks_usage_cost_and_schema() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         payload = json.loads(request.content)
         assert payload["response_format"]["type"] == "json_schema"
+        schema = payload["response_format"]["json_schema"]["schema"]
+        serialized_schema = json.dumps(schema)
+        assert "minLength" not in serialized_schema
+        assert "maxLength" not in serialized_schema
+        assert '"default"' not in serialized_schema
+        assert schema["additionalProperties"] is False
+        assert schema["required"] == ["repaired_code", "summary"]
         assert request.headers["authorization"] == "Bearer test-key"
         return httpx.Response(
             200,

@@ -32,7 +32,7 @@ def test_custom_generation_uses_strict_code_only_schema_and_real_usage() -> None
         schema = payload["response_format"]["json_schema"]
         assert schema["strict"] is True
         assert schema["schema"]["properties"] == {
-            "code": {"maxLength": 100000, "minLength": 1, "title": "Code", "type": "string"}
+            "code": {"title": "Code", "type": "string"}
         }
         assert schema["schema"]["additionalProperties"] is False
         assert "Return exactly one Python module" in payload["messages"][0]["content"]

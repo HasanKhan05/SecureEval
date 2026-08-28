@@ -12,6 +12,19 @@ from app.schemas import StrictModel
 
 
 T = TypeVar("T", bound=StrictModel)
+UNSUPPORTED_PORTABLE_SCHEMA_KEYS = frozenset({"default", "minLength", "maxLength"})
+
+
+def _portable_json_schema(value):
+    if isinstance(value, dict):
+        return {
+            key: _portable_json_schema(item)
+            for key, item in value.items()
+            if key not in UNSUPPORTED_PORTABLE_SCHEMA_KEYS
+        }
+    if isinstance(value, list):
+        return [_portable_json_schema(item) for item in value]
+    return value
 
 
 class LlmClient:
@@ -66,7 +79,9 @@ class LlmClient:
                                 "json_schema": {
                                     "name": response_type.__name__,
                                     "strict": True,
-                                    "schema": response_type.model_json_schema(),
+                                    "schema": _portable_json_schema(
+                                        response_type.model_json_schema()
+                                    ),
                                 },
                             },
                         },
