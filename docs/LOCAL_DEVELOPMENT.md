@@ -7,23 +7,23 @@ SecureEval has a React/Vite frontend and a localhost FastAPI backend. The suppli
 The real backend-connected workflows are:
 
 1. Benchmark Mode
-2. User Login Service (T-01)
+2. Any controlled task from T-01 through T-05
 3. Scan-category selection
 4. Pytest, Bandit, and Semgrep baseline analysis
 5. One or more repair strategies, including Run All
 6. Repair execution, retesting, rescanning, and deterministic scoring
 7. Persisted comparison and result explanation
 
-Upload Code is a real exploratory static-analysis workflow. It validates uploaded Python syntax, runs Bandit and Semgrep, applies selected repairs, and rescans repaired candidates. It never executes uploaded source or uploaded tests; T-01 is the only workflow with real Pytest functional execution.
+Upload Code is a real exploratory static-analysis workflow. It validates uploaded Python syntax, runs Bandit and Semgrep, applies selected repairs, and rescans repaired candidates. It never executes uploaded source or uploaded tests.
 
-The other benchmark tasks and Custom Prompt Mode remain interactive demo slices.
+Custom Prompt uses a configured OpenAI-compatible API for real code generation and repairs. Generated Python is syntax-checked, scanned, and smoke-run only in restricted Docker. If Docker is stopped, smoke evidence is explicitly unavailable while scanning continues. No fake generation fallback is used.
 
 ## Prerequisites
 
 - Node.js 22 and Corepack
 - Python 3.14
 - Microsoft Edge only when running the included browser verification scripts
-- Docker Desktop only for the optional `docker_live` sandbox tests
+- Docker Desktop with the Linux engine for Custom Prompt smoke execution and optional `docker_live` tests
 
 ## Backend setup
 
@@ -39,7 +39,7 @@ python -m venv .venv
 
 The default configuration needs no secrets and stores local data under `backend/data/`.
 
-For an optional OpenAI-compatible repair call, set values in the shell before starting Uvicorn:
+For real Custom Prompt generation (and optional model repairs in other modes), set values before starting Uvicorn:
 
 ```powershell
 $env:SECUREEVAL_LLM_BASE_URL = "https://api.openai.com/v1"
@@ -47,7 +47,7 @@ $env:SECUREEVAL_LLM_API_KEY = "your-local-key"
 $env:SECUREEVAL_LLM_MODEL = "your-structured-output-model"
 ```
 
-Do not commit populated environment files or credentials. With no key/model, the deterministic repair path is used and the UI labels the persisted source `local_fallback`.
+Do not commit populated environment files or credentials. With no key/model, controlled benchmarks and Upload Code may use labeled deterministic repairs; Custom Prompt fails honestly with no generated-code fallback.
 
 ## Frontend setup
 
@@ -99,12 +99,20 @@ cd frontend
 corepack pnpm verify:real-upload
 ```
 
+Real Custom Prompt provider boundary, repairs, evidence, and persistence:
+
+```powershell
+cd frontend
+corepack pnpm verify:real-custom
+```
+
 The browser workflows start temporary backend and preview servers themselves. Ports 8000 and 8443 must be available.
 
 ## Local-data and safety notes
 
-- T-01 uses a controlled repository fixture and is the only real Pytest functional-test workflow.
+- T-01 through T-05 use controlled repository fixtures and real Pytest functional tests.
 - Upload Code performs real local syntax/static analysis and repair, but never executes uploaded source or uploaded tests.
+- Custom Prompt executes generated code only in restricted Docker as a smoke check, never as a trusted test suite.
 - Static analysis and sample functional tests cannot prove that code is secure.
 - SQLite data, artifacts, and temporary run workspaces stay local and are ignored by Git.
 - Keep the API bound to localhost.

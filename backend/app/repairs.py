@@ -21,17 +21,69 @@ STRATEGY_INSTRUCTIONS = {
 }
 
 
-def _fallback(source: str, provider_status: str) -> LlmResult[RepairProposal]:
+def _known_fallback_repair(source: str) -> tuple[str, str] | None:
     vulnerable_query = (
         'query = f"SELECT id, username, role FROM users WHERE username = '
         "'{username}'\""
     )
-    parameterized_query = (
-        'query = "SELECT id, username, role FROM users WHERE username = ?"'
-    )
     vulnerable_execute = "connection.execute(query).fetchone()"
-    parameterized_execute = "connection.execute(query, (username,)).fetchone()"
-    if vulnerable_query not in source or vulnerable_execute not in source:
+    if vulnerable_query in source and vulnerable_execute in source:
+        repaired = source.replace(
+            vulnerable_query,
+            'query = "SELECT id, username, role FROM users WHERE username = ?"',
+        ).replace(
+            vulnerable_execute,
+            "connection.execute(query, (username,)).fetchone()",
+        )
+        return repaired, "parameterized the fixture SQL query"
+
+    vulnerable_path_read = 'return (Path(root) / requested_path).read_text(encoding="utf-8")'
+    if vulnerable_path_read in source:
+        repaired = source.replace(
+            f"    {vulnerable_path_read}",
+            '    root_path = Path(root).resolve()\n'
+            '    candidate = (root_path / requested_path).resolve()\n'
+            '    if not candidate.is_relative_to(root_path):\n'
+            '        raise ValueError("document path escapes root")\n'
+            '    return candidate.read_text(encoding="utf-8")',
+        )
+        return repaired, "contained document reads beneath the configured root"
+
+    vulnerable_command = 'return ["sh", "-c", f"git {action} {target}"]'
+    if vulnerable_command in source:
+        repaired = source.replace(
+            f"    {vulnerable_command}",
+            '    allowed = {"status": "status", "show": "show"}\n'
+            '    if action not in allowed:\n'
+            '        raise ValueError("unsupported action")\n'
+            '    return ["git", allowed[action], "--", target]',
+        )
+        return repaired, "replaced shell interpolation with an allowlisted argv list"
+
+    hardcoded_token = 'DEFAULT_API_TOKEN = "sk-demo-hardcoded-token"'
+    if hardcoded_token in source:
+        repaired = source.replace(f"{hardcoded_token}\n\n\n", "").replace(
+            '    return env.get("SECUREEVAL_SAMPLE_TOKEN", DEFAULT_API_TOKEN)',
+            '    token = env.get("SECUREEVAL_SAMPLE_TOKEN", "")\n'
+            '    if not token:\n'
+            '        raise ValueError("token is not configured")\n'
+            '    return token',
+        )
+        return repaired, "removed the hardcoded token fallback"
+
+    vulnerable_digest = 'hashlib.md5(salt + password.encode("utf-8")).hexdigest()'
+    if vulnerable_digest in source:
+        repaired = source.replace(
+            vulnerable_digest,
+            'hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 120_000).hex()',
+        )
+        return repaired, "replaced MD5 with PBKDF2-HMAC-SHA256"
+    return None
+
+
+def _fallback(source: str, provider_status: str) -> LlmResult[RepairProposal]:
+    candidate = _known_fallback_repair(source)
+    if candidate is None:
         return LlmResult(
             value=None,
             source="local_fallback",
@@ -45,19 +97,20 @@ def _fallback(source: str, provider_status: str) -> LlmResult[RepairProposal]:
             retries=0,
         )
 
-    repaired = source.replace(vulnerable_query, parameterized_query).replace(
-        vulnerable_execute, parameterized_execute
+    repaired, repair_name = candidate
+    limitation = (
+        "The local fallback recognizes only the demonstrated SQL interpolation pattern."
+        if repair_name == "parameterized the fixture SQL query"
+        else "The local fallback recognizes only the five controlled benchmark patterns."
     )
     return LlmResult(
         value=RepairProposal(
             repaired_code=repaired,
             summary=(
-                "Local deterministic fallback parameterized the fixture SQL query "
+                f"Local deterministic fallback {repair_name} "
                 f"after LLM status: {provider_status}."
             ),
-            limitations=[
-                "The local fallback recognizes only the demonstrated SQL interpolation pattern."
-            ],
+            limitations=[limitation],
         ),
         source="local_fallback",
         provider=None,
@@ -77,9 +130,13 @@ def repair_source(
     findings: list[Finding],
     test_result: TestExecution,
     llm_client: LlmClient,
+    *,
+    allow_fallback: bool = True,
 ) -> LlmResult[RepairProposal]:
     if len(source) > 200_000:
-        return _fallback("", "source_too_large")
+        if allow_fallback:
+            return _fallback("", "source_too_large")
+        return llm_client._empty("failed", latency_ms=0, retries=0)
 
     if llm_client.available:
         messages = [
@@ -106,6 +163,8 @@ def repair_source(
         result = llm_client.complete(RepairProposal, messages)
         if result.status == "completed" and result.value is not None:
             return result
-        return _fallback(source, result.status)
+        return _fallback(source, result.status) if allow_fallback else result
 
-    return _fallback(source, "unavailable")
+    if allow_fallback:
+        return _fallback(source, "unavailable")
+    return llm_client._empty("unavailable", latency_ms=0, retries=0)

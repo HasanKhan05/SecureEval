@@ -73,6 +73,7 @@ def create_app(
     database_url: str | None = None,
     allowed_origins: list[str] | tuple[str, ...] | None = None,
     artifact_root: Path | None = None,
+    llm_client: LlmClient | None = None,
 ) -> FastAPI:
     resolved_url = database_url or os.getenv("SECUREEVAL_DATABASE_URL", DEFAULT_DATABASE_URL)
     if allowed_origins is None:
@@ -95,7 +96,7 @@ def create_app(
     upload_policy = UploadPolicy()
 
     runner_dependencies = RunnerDependencies(
-        fixture_root=Path(__file__).parent / "fixtures" / "benchmark_t01",
+        fixtures_root=Path(__file__).parent / "fixtures",
         work_root=Path(
             os.getenv(
                 "SECUREEVAL_WORK_ROOT",
@@ -105,7 +106,7 @@ def create_app(
         tool_timeout_seconds=float(
             os.getenv("SECUREEVAL_TOOL_TIMEOUT_SECONDS", "30")
         ),
-        llm_client=LlmClient(
+        llm_client=llm_client or LlmClient(
             base_url=os.getenv(
                 "SECUREEVAL_LLM_BASE_URL",
                 "https://api.openai.com/v1",

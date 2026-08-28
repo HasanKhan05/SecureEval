@@ -331,7 +331,7 @@ def test_completed_upload_report_survives_application_restart(
     assert not artifact_path.exists()
 
 
-def test_custom_prompt_backend_dispatch_is_explicitly_unsupported(
+def test_custom_prompt_backend_requires_real_provider_configuration(
     client: TestClient,
 ) -> None:
     created = client.post(
@@ -349,7 +349,7 @@ def test_custom_prompt_backend_dispatch_is_explicitly_unsupported(
     response = client.get(f"/api/v1/runs/{run_id}").json()
 
     assert response["status"] == "failed"
-    assert response["failure_code"] == "unsupported_mode"
+    assert response["failure_code"] == "generation_unavailable"
 
 
 def test_upload_report_persists_a_finding_that_survives_repair(

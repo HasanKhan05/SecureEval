@@ -1,0 +1,1 @@
+{"fixture_version":"benchmark-fixture-v1","task_id":"T-05","title":"Password Digest Utility","entrypoint":"source/app.py","test_path":"tests/test_app.py","expected_rule_ids":{"bandit":["B324"]}}

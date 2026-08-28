@@ -26,6 +26,7 @@ const uploadReport = {
     output: "Functional tests unavailable — uploaded code was not executed.",
     output_truncated: false,
   },
+  generation_usage: null,
   strategy_results: [
     {
       attempt_id: "attempt_00000000000000000000000000000000",

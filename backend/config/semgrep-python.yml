@@ -9,3 +9,17 @@ rules:
       $QUERY = f"..."
       ...
       $CONNECTION.execute($QUERY)
+  - id: secureeval.python.path-traversal
+    languages: [python]
+    severity: WARNING
+    message: User-controlled path is read without containment validation.
+    metadata:
+      category: input_validation
+    pattern: (Path($ROOT) / $REQUESTED).read_text(...)
+  - id: secureeval.python.shell-command-builder
+    languages: [python]
+    severity: ERROR
+    message: Command arguments are interpolated into a shell command.
+    metadata:
+      category: injection
+    pattern: '["sh", "-c", f"..."]'

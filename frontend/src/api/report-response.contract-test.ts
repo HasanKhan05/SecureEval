@@ -45,6 +45,7 @@ const reportFixture = {
     output: "2 passed",
     output_truncated: false,
   },
+  generation_usage: null,
   strategy_results: [
     {
       attempt_id: "attempt_00000000000000000000000000000000",

@@ -215,6 +215,17 @@ export function useLiveRun(
     [client, createAndStart, prepareStart],
   );
 
+  const startCustomPrompt = useCallback(
+    (prompt: string, scanCategories: ScanCategoryId[]) =>
+      createAndStart({
+        mode: "custom_prompt",
+        custom_prompt: prompt,
+        scan_categories: scanCategories,
+        strategies: ["vulnerability_specific_v1"],
+      }),
+    [createAndStart],
+  );
+
   const configure = useCallback(
     async (strategies: StrategyId[]) => {
       if (!runId) return false;
@@ -263,6 +274,7 @@ export function useLiveRun(
     terminalMessage,
     busy,
     startBenchmark,
+    startCustomPrompt,
     startUpload,
     configure,
     cancel,

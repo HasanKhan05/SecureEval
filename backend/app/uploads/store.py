@@ -8,6 +8,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from time import sleep
 from uuid import uuid4
 
 from app.uploads.policy import UploadPurpose
@@ -41,6 +42,21 @@ def _remove_tree(path: Path) -> None:
     if path.exists():
         shutil.rmtree(path, onexc=_remove_readonly)
 
+
+def _replace_directory(source: Path, destination: Path) -> None:
+    delays = (0.02, 0.05, 0.1, 0.2)
+    for attempt in range(len(delays) + 1):
+        try:
+            os.replace(source, destination)
+            return
+        except PermissionError as exc:
+            if (
+                os.name != "nt"
+                or getattr(exc, "winerror", None) != 5
+                or attempt == len(delays)
+            ):
+                raise
+            sleep(delays[attempt])
 
 class ArtifactStore:
     def __init__(
@@ -122,7 +138,7 @@ class ArtifactStore:
             manifest_path = temporary / "manifest.json"
             manifest_path.write_bytes(source.manifest_json.encode("utf-8"))
             manifest_path.chmod(0o444)
-            os.replace(temporary, destination)
+            _replace_directory(temporary, destination)
         except BaseException:
             _remove_tree(temporary)
             raise

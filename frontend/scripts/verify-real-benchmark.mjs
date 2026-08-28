@@ -60,14 +60,14 @@ try {
   await page.reload({ waitUntil: 'networkidle' })
 
   await page.getByRole('button', { name: /Start Demo/ }).click()
-  await page.getByText('User Login Service', { exact: true }).click()
+  await page.getByText('Document File Reader', { exact: true }).click()
   await page.getByRole('button', { name: /Run Benchmark Task/ }).click()
   await page.getByRole('button', { name: /Generate Code/ }).click()
   await page.getByRole('button', { name: /Configure Security Scan/ }).waitFor({
     timeout: 8_000,
   })
   await page.getByRole('button', { name: /Configure Security Scan/ }).click()
-  await page.getByText('Injection', { exact: true }).first().click()
+  await page.getByText('Input Validation', { exact: true }).first().click()
   await page.getByRole('button', { name: /Run Security Analysis/ }).click()
 
   await page.getByText('Real baseline analysis complete', { exact: true }).waitFor({
@@ -80,16 +80,13 @@ try {
   })
   await page.getByRole('button', { name: /View Final Results/ }).click()
 
-  await page.getByText('Bandit · B608', { exact: true }).waitFor()
-  await page.getByText(
-    'Semgrep · secureeval.python.sql-injection',
-    { exact: true },
-  ).waitFor()
+  await page.getByText('Semgrep · secureeval.python.path-traversal', { exact: true }).waitFor()
+
   await page.getByText(/Persisted result · local_fallback/).waitFor()
   const winner = await page.getByTestId('best-overall-strategy').textContent()
 
   await page.reload({ waitUntil: 'networkidle' })
-  await page.getByText('Bandit · B608', { exact: true }).waitFor({
+  await page.getByText('Semgrep · secureeval.python.path-traversal', { exact: true }).waitFor({
     timeout: 15_000,
   })
   const persistedWinner = await page.getByTestId('best-overall-strategy').textContent()
@@ -101,16 +98,16 @@ try {
   await page.evaluate(() => localStorage.clear())
   await page.goto('http://127.0.0.1:8443/', { waitUntil: 'networkidle' })
   await page.getByRole('button', { name: /Start Demo/ }).click()
-  await page.getByText('User Login Service', { exact: true }).click()
+  await page.getByText('Document File Reader', { exact: true }).click()
   await page.getByRole('button', { name: /Run Benchmark Task/ }).click()
   await page.getByRole('button', { name: /Generate Code/ }).click()
   await page.getByRole('button', { name: /Configure Security Scan/ }).click()
-  await page.getByText('Injection', { exact: true }).first().click()
+  await page.getByText('Input Validation', { exact: true }).first().click()
   await page.getByRole('button', { name: /Run Security Analysis/ }).click()
   await page.getByRole('alert').waitFor({ timeout: 8_000 })
-  await page.getByText('Live local evaluation · T-01', { exact: true }).waitFor()
+  await page.getByText('Live controlled benchmark', { exact: true }).waitFor()
   if (await page.getByText('Demo analysis complete', { exact: true }).count()) {
-    throw new Error('T-01 API failure fell back to simulated analysis.')
+    throw new Error('T-02 API failure fell back to simulated analysis.')
   }
 
   await page.unroute('http://127.0.0.1:8000/api/v1/**')
@@ -130,11 +127,11 @@ try {
   await page.evaluate(() => localStorage.clear())
   await page.goto('http://127.0.0.1:8443/', { waitUntil: 'networkidle' })
   await page.getByRole('button', { name: /Start Demo/ }).click()
-  await page.getByText('User Login Service', { exact: true }).click()
+  await page.getByText('Document File Reader', { exact: true }).click()
   await page.getByRole('button', { name: /Run Benchmark Task/ }).click()
   await page.getByRole('button', { name: /Generate Code/ }).click()
   await page.getByRole('button', { name: /Configure Security Scan/ }).click()
-  await page.getByText('Injection', { exact: true }).first().click()
+  await page.getByText('Input Validation', { exact: true }).first().click()
   await page.getByRole('button', { name: /Run Security Analysis/ }).click()
   await page.getByRole('alert').getByText(/could not be started/i).waitFor({
     timeout: 8_000,
@@ -142,7 +139,7 @@ try {
   await page.waitForTimeout(1_000)
   await page.getByRole('alert').getByText(/could not be started/i).waitFor()
 
-  console.log('Real T-01 workflow, refresh persistence, API creation failure, and start failure verified.')
+  console.log('Real T-02 workflow, refresh persistence, API creation failure, and start failure verified.')
 } finally {
   await browser.close()
   await server.close()

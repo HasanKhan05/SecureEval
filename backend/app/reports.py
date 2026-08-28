@@ -19,6 +19,7 @@ from app.scoring import METRIC_POLICY_SUMMARY, RankingInput, rank_strategies
 from app.schemas import (
     EvaluationKind,
     Finding,
+    LlmUsage,
     RunReport,
     StrategyResult,
     SyntaxValidation,
@@ -91,6 +92,18 @@ def save_report(session: Session, report: RunReport) -> None:
         for finding in report.baseline_findings
     )
     session.add(_test_record(report.run_id, None, "baseline", report.baseline_tests))
+    if report.generation_usage is not None:
+        usage = report.generation_usage
+        session.add(
+            LlmCallRecord(
+                llm_call_id=_new_id("llm"), run_id=report.run_id,
+                attempt_id=None, purpose="generation", source=usage.source,
+                provider=usage.provider, model=usage.model, status=usage.status,
+                input_tokens=usage.input_tokens, output_tokens=usage.output_tokens,
+                estimated_cost_microusd=round(usage.estimated_cost_usd * 1_000_000),
+                latency_ms=usage.latency_ms, retries=usage.retries,
+            )
+        )
 
     for result in report.strategy_results:
         session.add_all(
@@ -167,6 +180,10 @@ STATIC_METRIC_POLICY_SUMMARY = (
     "upload-static-metrics-v1: security and overall scores use completed scanner "
     "evidence and valid syntax only; functional tests were not executed."
 )
+CUSTOM_METRIC_POLICY_SUMMARY = (
+    "custom-smoke-metrics-v1: rankings use completed static scanner evidence and "
+    "valid syntax; isolated smoke execution is not a trusted test suite."
+)
 
 
 def build_report(
@@ -179,6 +196,7 @@ def build_report(
     baseline_scan_status: str = "completed",
     baseline_syntax: SyntaxValidation | None = None,
     baseline_tests: TestExecution,
+    generation_usage: LlmUsage | None = None,
     strategy_results: list[StrategyResult],
     explanation: str,
     explanation_source: str,
@@ -196,6 +214,9 @@ def build_report(
             and item.repaired_scan_status == "completed"
         ]
     else:
+        required_basis = (
+            "static_smoke" if evaluation_kind == "custom_prompt_smoke" else "static_only"
+        )
         eligible = [
             item
             for item in strategy_results
@@ -204,7 +225,7 @@ def build_report(
             and item.repaired_syntax is not None
             and item.repaired_syntax.status == "completed"
             and item.repaired_syntax.valid
-            and item.metrics.score_basis == "static_only"
+            and item.metrics.score_basis == required_basis
             and item.metrics.functionality_score is None
         ]
     ranking = rank_strategies(
@@ -232,6 +253,7 @@ def build_report(
         baseline_scan_status=baseline_scan_status,
         baseline_syntax=baseline_syntax,
         baseline_tests=baseline_tests,
+        generation_usage=generation_usage,
         strategy_results=strategy_results,
         best_overall=ranking.best_overall,
         best_efficiency=ranking.best_efficiency,
@@ -239,9 +261,11 @@ def build_report(
         explanation_source=explanation_source,
         limitations=[
             *limitations,
-            METRIC_POLICY_SUMMARY
-            if evaluation_kind == "benchmark_full"
-            else STATIC_METRIC_POLICY_SUMMARY,
+            METRIC_POLICY_SUMMARY if evaluation_kind == "benchmark_full" else (
+                CUSTOM_METRIC_POLICY_SUMMARY
+                if evaluation_kind == "custom_prompt_smoke"
+                else STATIC_METRIC_POLICY_SUMMARY
+            ),
         ],
         created_at=created_at,
     )

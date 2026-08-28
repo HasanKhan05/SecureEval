@@ -10,6 +10,7 @@
     "verify:responsive": "pnpm build && node scripts/verify-responsive-layout.mjs",
     "verify:real-benchmark": "node scripts/verify-real-benchmark.mjs",
     "verify:real-upload": "node scripts/verify-real-upload.mjs",
+    "verify:real-custom": "node scripts/verify-real-custom-prompt.mjs",
     "preview": "vite preview",
     "format": "oxfmt"
   },
