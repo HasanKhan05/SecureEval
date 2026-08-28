@@ -24,7 +24,7 @@ def client(database_url: str, tmp_path: Path) -> Iterator[TestClient]:
 def benchmark_run_payload() -> dict[str, object]:
     return {
         "mode": "benchmark",
-        "task_id": "task_demo_001",
+        "task_id": "T-01",
         "scan_categories": ["injection", "secrets"],
         "strategies": ["vulnerability_specific_v1"],
     }

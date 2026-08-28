@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.enums import JobStatus, Mode, StrategyId
+from app.benchmarks import resolve_benchmark
 from app.models import RunRecord
 from app.repairs import repair_source
 from app.reports import build_report, save_report
@@ -37,9 +38,15 @@ def execute_baseline(
 ) -> None:
     run_work = dependencies.work_root / run_id
     try:
+        with session_factory() as session:
+            record = session.get(RunRecord, run_id)
+            if record is None or record.status != JobStatus.RUNNING.value:
+                return
+            benchmark = resolve_benchmark(record.task_id or "")
+        fixture_root = benchmark.fixture_root(dependencies.fixtures_root)
         baseline_work = run_work / "baseline"
         baseline_work.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(dependencies.fixture_root, baseline_work)
+        shutil.copytree(fixture_root, baseline_work)
         source_path = baseline_work / "source"
         tests_path = baseline_work / "tests"
         source = (source_path / "app.py").read_text(encoding="utf-8")
@@ -124,6 +131,8 @@ def execute_repairs(
                 (item.attempt_id, item.strategy_id) for item in record.attempts
             ]
             mode = Mode(record.mode)
+            benchmark = resolve_benchmark(record.task_id or "")
+            fixture_root = benchmark.fixture_root(dependencies.fixtures_root)
 
         results: list[StrategyResult] = []
         for attempt_id, strategy_value in attempts:
@@ -139,7 +148,7 @@ def execute_repairs(
                 )
 
             attempt_work = run_work / attempt_id
-            shutil.copytree(dependencies.fixture_root, attempt_work)
+            shutil.copytree(fixture_root, attempt_work)
             source_path = attempt_work / "source"
             tests_path = attempt_work / "tests"
             source_file = source_path / "app.py"

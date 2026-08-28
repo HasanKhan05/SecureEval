@@ -95,7 +95,7 @@ def create_app(
     upload_policy = UploadPolicy()
 
     runner_dependencies = RunnerDependencies(
-        fixture_root=Path(__file__).parent / "fixtures" / "benchmark_t01",
+        fixtures_root=Path(__file__).parent / "fixtures",
         work_root=Path(
             os.getenv(
                 "SECUREEVAL_WORK_ROOT",

@@ -6,6 +6,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.enums import ALL_STRATEGIES, MODE_LABELS, JobStatus, Mode, StrategyId
+from app.benchmarks import resolve_benchmark
 from app.errors import APIError
 from app.manifests import canonical_manifest, manifest_hash
 from app.models import RunRecord, StrategyAttemptRecord, UploadArtifactRecord
@@ -114,6 +115,11 @@ def _source_artifact(
 
 
 def create_run(session: Session, payload: RunCreate) -> RunResponse:
+    if payload.mode == Mode.BENCHMARK:
+        try:
+            resolve_benchmark(payload.task_id or "")
+        except ValueError as exc:
+            raise APIError(422, "unknown_benchmark", "Benchmark task is not available.") from exc
     strategies = _expanded_strategies(payload)
     timestamp = _now()
     run_id = _new_id("run")

@@ -17,7 +17,7 @@ from app.uploads.store import ArtifactStore
 
 @dataclass(frozen=True)
 class RunnerDependencies:
-    fixture_root: Path
+    fixtures_root: Path
     work_root: Path
     tool_timeout_seconds: float
     llm_client: LlmClient
