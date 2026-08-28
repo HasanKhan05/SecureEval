@@ -1,0 +1,1 @@
+{"fixture_version":"benchmark-fixture-v1","task_id":"T-02","title":"Document File Reader","entrypoint":"source/app.py","test_path":"tests/test_app.py","expected_rule_ids":{"semgrep":["secureeval.python.path-traversal"]}}
