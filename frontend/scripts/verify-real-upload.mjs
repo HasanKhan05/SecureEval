@@ -6,6 +6,8 @@ import { spawn } from 'node:child_process'
 import { chromium } from 'playwright-core'
 import { preview } from 'vite'
 
+import { assertNoSourceDisclosure } from './upload-log-privacy.mjs'
+
 const VALID_SQL_SOURCE = `import sqlite3
 
 def find_user(connection: sqlite3.Connection, username: str) -> dict[str, object] | None:
@@ -135,11 +137,17 @@ async function startUploadAnalysis(page, source) {
   await page.getByRole('button', { name: /Run Security Analysis/ }).click()
 }
 
-async function assertNoStoredSource(page, source) {
+async function assertNoStoredSource(page, source, visibleErrorText = '') {
   const storedValues = await page.evaluate(() => Object.values(localStorage))
   if (storedValues.some(value => value.includes(source))) {
     throw new Error('Uploaded source was persisted in localStorage.')
   }
+  const alertText = (await page.getByRole('alert').allTextContents()).join('\n')
+  assertNoSourceDisclosure({
+    backendLog,
+    visibleErrorText: `${alertText}\n${visibleErrorText}`,
+    sensitiveValues: [source],
+  })
 }
 
 let tempRoot = null
@@ -168,8 +176,8 @@ try {
       stdio: ['ignore', 'pipe', 'pipe'],
     },
   )
-  backend.stdout.on('data', chunk => { backendLog = (backendLog + chunk).slice(-12_000) })
-  backend.stderr.on('data', chunk => { backendLog = (backendLog + chunk).slice(-12_000) })
+  backend.stdout.on('data', chunk => { backendLog += chunk })
+  backend.stderr.on('data', chunk => { backendLog += chunk })
   backend.once('error', error => { backendSpawnError = error })
 
   await waitForHealth()
@@ -243,8 +251,9 @@ try {
   await page.evaluate(() => localStorage.clear())
   await page.goto(APP_URL, { waitUntil: 'networkidle' })
   await startUploadAnalysis(page, INVALID_PYTHON_SOURCE)
-  await page.getByText(/Invalid Python syntax at line \d+, column \d+:/).waitFor({ timeout: 15_000 })
-  await assertNoStoredSource(page, INVALID_PYTHON_SOURCE)
+  const syntaxError = page.getByText(/Invalid Python syntax at line \d+, column \d+:/)
+  await syntaxError.waitFor({ timeout: 15_000 })
+  await assertNoStoredSource(page, INVALID_PYTHON_SOURCE, await syntaxError.textContent() || '')
   await page.getByRole('button', { name: 'Back' }).click()
   await page.getByRole('button', { name: 'Prompt' }).click()
   await page.getByRole('button', { name: /Upload Code/ }).click()
