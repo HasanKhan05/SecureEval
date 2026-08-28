@@ -38,6 +38,6 @@ No API key is required. Without one, repaired results are explicitly labeled `lo
 
 ## Current scope
 
-T-01 is the real backend-connected benchmark slice. The remaining benchmark tasks, Custom Prompt Mode, and Upload Code Mode preserve the interactive portfolio UI but currently use demo data. Uploaded code in those demo flows is not executed.
+T-01 is the real backend-connected benchmark slice and the only workflow that runs real Pytest functional tests. Upload Code is a real exploratory local workflow: it validates Python syntax, runs Bandit and Semgrep static analysis, and evaluates repairs with the same non-executing checks. The remaining benchmark tasks and Custom Prompt Mode preserve the interactive portfolio UI with demo data. Uploaded code and uploaded tests are never executed.
 
 See [docs/LOCAL_DEVELOPMENT.md](docs/LOCAL_DEVELOPMENT.md) for optional LLM settings and verification commands.

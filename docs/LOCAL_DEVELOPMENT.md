@@ -4,7 +4,7 @@ SecureEval has a React/Vite frontend and a localhost FastAPI backend. The suppli
 
 ## Supported workflow
 
-The real backend-connected slice is:
+The real backend-connected workflows are:
 
 1. Benchmark Mode
 2. User Login Service (T-01)
@@ -14,7 +14,9 @@ The real backend-connected slice is:
 6. Repair execution, retesting, rescanning, and deterministic scoring
 7. Persisted comparison and result explanation
 
-The other benchmark tasks, Custom Prompt Mode, and Upload Code Mode remain interactive demo slices. They do not execute uploaded code or claim real security evaluation.
+Upload Code is a real exploratory static-analysis workflow. It validates uploaded Python syntax, runs Bandit and Semgrep, applies selected repairs, and rescans repaired candidates. It never executes uploaded source or uploaded tests; T-01 is the only workflow with real Pytest functional execution.
+
+The other benchmark tasks and Custom Prompt Mode remain interactive demo slices.
 
 ## Prerequisites
 
@@ -90,11 +92,19 @@ cd frontend
 corepack pnpm verify:real-benchmark
 ```
 
-The browser workflow starts temporary backend and preview servers itself. Ports 8000 and 8443 must be available.
+Real Upload Code browser workflow, syntax/static evidence, persistence, and explicit failure states:
+
+```powershell
+cd frontend
+corepack pnpm verify:real-upload
+```
+
+The browser workflows start temporary backend and preview servers themselves. Ports 8000 and 8443 must be available.
 
 ## Local-data and safety notes
 
-- T-01 uses a controlled repository fixture; arbitrary uploaded code is not executed by this workflow.
+- T-01 uses a controlled repository fixture and is the only real Pytest functional-test workflow.
+- Upload Code performs real local syntax/static analysis and repair, but never executes uploaded source or uploaded tests.
 - Static analysis and sample functional tests cannot prove that code is secure.
 - SQLite data, artifacts, and temporary run workspaces stay local and are ignored by Git.
 - Keep the API bound to localhost.
