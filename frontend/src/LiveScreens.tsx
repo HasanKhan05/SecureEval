@@ -20,6 +20,50 @@ export function getLiveEvidenceCopy(evaluationKind: RunReport['evaluation_kind']
   return evaluationKind === 'upload_static' ? UPLOAD_EVIDENCE_COPY : BENCHMARK_EVIDENCE_COPY
 }
 
+type StaticScoreEvidenceInput = {
+  baselineSyntax: Pick<NonNullable<RunReport['baseline_syntax']>, 'valid'> | null
+  baselineScanStatus: RunReport['baseline_scan_status']
+  strategyStatus: RunReport['strategy_results'][number]['status']
+  repairedSyntax: Pick<NonNullable<RunReport['strategy_results'][number]['repaired_syntax']>, 'valid'> | null
+  repairedScanStatus: RunReport['strategy_results'][number]['repaired_scan_status']
+  scoreBasis: RunReport['strategy_results'][number]['metrics']['score_basis']
+}
+
+type StaticScoreEvidenceResult<Input extends StaticScoreEvidenceInput> =
+  Input['baselineSyntax'] extends { readonly valid: true }
+    ? Input['baselineScanStatus'] extends 'completed'
+      ? Input['strategyStatus'] extends 'completed'
+        ? Input['repairedSyntax'] extends { readonly valid: true }
+          ? Input['repairedScanStatus'] extends 'completed'
+            ? Input['scoreBasis'] extends 'static_only' ? true : false
+            : false
+          : false
+        : false
+      : false
+    : false
+
+export function hasStaticScoreEvidence<const Input extends StaticScoreEvidenceInput>(input: Input): StaticScoreEvidenceResult<Input> {
+  return Boolean(
+    input.baselineSyntax?.valid
+    && input.baselineScanStatus === 'completed'
+    && input.strategyStatus === 'completed'
+    && input.repairedSyntax?.valid
+    && input.repairedScanStatus === 'completed'
+    && input.scoreBasis === 'static_only',
+  ) as StaticScoreEvidenceResult<Input>
+}
+
+function hasReportStaticScoreEvidence(report: RunReport, result: RunReport['strategy_results'][number]) {
+  return hasStaticScoreEvidence({
+    baselineSyntax: report.baseline_syntax,
+    baselineScanStatus: report.baseline_scan_status,
+    strategyStatus: result.status,
+    repairedSyntax: result.repaired_syntax,
+    repairedScanStatus: result.repaired_scan_status,
+    scoreBasis: result.metrics.score_basis,
+  })
+}
+
 const STAGE_LABELS: Record<RunProgress['stage'], string> = {
   queued: 'Preparing isolated workspace',
   baseline_testing: 'Running baseline functional tests',
@@ -109,11 +153,12 @@ export function LiveComparisonScreen({ mode, progress, report, strategies, error
         <div className="mt-6 grid gap-3 lg:grid-cols-3">
           {strategies.map(id => {
             const result = report?.strategy_results.find(item => item.strategy_id === id)
+            const canShowStaticScore = !staticOnly || Boolean(report && result && hasReportStaticScoreEvidence(report, result))
             return (
               <div key={id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                 <div className="font-display font-black uppercase text-[#111118]">{STRATEGY_META[id].title}</div>
                 <div className="mt-1 font-mono text-[10px] uppercase text-slate-400">{result ? 'Persisted result' : progress?.current_strategy === id ? 'Running now' : 'Queued'}</div>
-                {result && <div className="mt-4 grid grid-cols-2 gap-2 text-xs"><span>{staticOnly ? 'Functional tests' : 'Tests'}</span><b className="text-right">{staticOnly ? result.repaired_tests.status === 'unavailable' ? result.repaired_tests.output || `Unavailable (${result.repaired_tests.status})` : `Unavailable (${result.repaired_tests.status})` : result.repaired_tests.status === 'completed' ? `${result.repaired_tests.passed} passed` : `Unavailable (${result.repaired_tests.status})`}</b>{staticOnly && <><span>Syntax</span><b className="text-right">{result.repaired_syntax ? result.repaired_syntax.valid ? UPLOAD_EVIDENCE_COPY.syntaxValid : 'Syntax invalid' : 'Syntax unavailable'}</b></>}<span>Findings</span><b className="text-right">{result.status === 'completed' && result.repaired_scan_status === 'completed' ? `${result.metrics.findings_before} → ${result.metrics.findings_after}` : `Unavailable (${result.repaired_scan_status})`}</b><span>{staticOnly ? UPLOAD_EVIDENCE_COPY.staticOnlyScore : 'Overall'}</span><b className="text-right text-[#1B3A6B]">{result.status === 'completed' && result.repaired_scan_status === 'completed' ? result.metrics.overall_score.toFixed(1) : 'Unavailable'}</b><span>Latency</span><b className="text-right">{(result.llm_usage.latency_ms / 1000).toFixed(2)}s</b></div>}
+                {result && <div className="mt-4 grid grid-cols-2 gap-2 text-xs"><span>{staticOnly ? 'Functional tests' : 'Tests'}</span><b className="text-right">{staticOnly ? result.repaired_tests.status === 'unavailable' ? result.repaired_tests.output || `Unavailable (${result.repaired_tests.status})` : `Unavailable (${result.repaired_tests.status})` : result.repaired_tests.status === 'completed' ? `${result.repaired_tests.passed} passed` : `Unavailable (${result.repaired_tests.status})`}</b>{staticOnly && <><span>Syntax</span><b className="text-right">{result.repaired_syntax ? result.repaired_syntax.valid ? UPLOAD_EVIDENCE_COPY.syntaxValid : 'Syntax invalid' : 'Syntax unavailable'}</b></>}<span>Findings</span><b className="text-right">{result.status === 'completed' && result.repaired_scan_status === 'completed' ? `${result.metrics.findings_before} → ${result.metrics.findings_after}` : `Unavailable (${result.repaired_scan_status})`}</b><span>{staticOnly ? UPLOAD_EVIDENCE_COPY.staticOnlyScore : 'Overall'}</span><b className="text-right text-[#1B3A6B]">{canShowStaticScore && result.status === 'completed' && result.repaired_scan_status === 'completed' ? result.metrics.overall_score.toFixed(1) : 'Unavailable'}</b><span>Latency</span><b className="text-right">{(result.llm_usage.latency_ms / 1000).toFixed(2)}s</b></div>}
               </div>
             )
           })}
@@ -144,9 +189,9 @@ function staticTestsLabel(output: string, status: string) {
 
 export function LiveResultsScreen({ report, onRestart }: { report: RunReport; onRestart: () => void }) {
   const staticOnly = report.mode === 'upload' && report.evaluation_kind === 'upload_static'
-  const staticEvidenceComplete = !staticOnly || report.baseline_scan_status === 'completed' && report.strategy_results.some(item => item.status === 'completed' && item.repaired_scan_status === 'completed' && item.metrics.score_basis === 'static_only')
-  const overall = useMemo(() => staticEvidenceComplete ? report.strategy_results.find(item => item.strategy_id === report.best_overall && item.status === 'completed' && item.repaired_scan_status === 'completed') : undefined, [report, staticEvidenceComplete])
-  const efficient = useMemo(() => staticEvidenceComplete ? report.strategy_results.find(item => item.strategy_id === report.best_efficiency && item.status === 'completed' && item.repaired_scan_status === 'completed') : undefined, [report, staticEvidenceComplete])
+  const staticEvidenceComplete = !staticOnly || report.strategy_results.some(item => hasReportStaticScoreEvidence(report, item))
+  const overall = useMemo(() => staticEvidenceComplete ? report.strategy_results.find(item => item.strategy_id === report.best_overall && (!staticOnly || hasReportStaticScoreEvidence(report, item))) : undefined, [report, staticEvidenceComplete, staticOnly])
+  const efficient = useMemo(() => staticEvidenceComplete ? report.strategy_results.find(item => item.strategy_id === report.best_efficiency && (!staticOnly || hasReportStaticScoreEvidence(report, item))) : undefined, [report, staticEvidenceComplete, staticOnly])
   return (
     <Shell>
       <Header eyebrow={staticOnly ? UPLOAD_EVIDENCE_COPY.eyebrow : 'Persisted local report · Sample run'} title="Evaluation Results" description={staticOnly ? 'This exploratory upload report contains syntax and static-scanner evidence only. Uploaded code was not executed, and static analysis is not a security guarantee.' : 'This dashboard reflects real tools and deterministic scoring for the local T-01 sample. It does not certify that code is secure.'} />
@@ -169,7 +214,7 @@ export function LiveResultsScreen({ report, onRestart }: { report: RunReport; on
 
       <section className="mb-7 overflow-hidden rounded-xl border border-black/[0.08] bg-white shadow-sm">
         <div className="border-b border-slate-100 p-5 sm:p-7"><h2 className="font-display text-xl font-black uppercase">Repair strategy results</h2></div>
-        <div className="overflow-x-auto"><table className="min-w-[850px] w-full text-left text-xs"><thead className="bg-slate-50 font-mono text-[9px] uppercase tracking-wider text-slate-400"><tr><th className="p-4">Strategy</th><th className="p-4">{staticOnly ? 'Functional tests' : 'Tests'}</th>{staticOnly && <th className="p-4">Syntax</th>}<th className="p-4">Findings</th><th className="p-4">Tokens</th><th className="p-4">Cost</th><th className="p-4">Latency</th><th className="p-4">{staticOnly ? UPLOAD_EVIDENCE_COPY.staticOnlyScore : 'Overall'}</th><th className="p-4">Efficiency</th></tr></thead><tbody>{report.strategy_results.map(result => <tr key={result.attempt_id} className="border-t border-slate-100"><td className="p-4 font-bold">{STRATEGY_META[result.strategy_id].title}</td><td className="p-4">{staticOnly ? staticTestsLabel(result.repaired_tests.output, result.repaired_tests.status) : result.repaired_tests.status === 'completed' ? `${result.repaired_tests.passed} passed / ${result.repaired_tests.failed} failed` : `Unavailable (${result.repaired_tests.status})`}</td>{staticOnly && <td className="p-4">{syntaxLabel(result.repaired_syntax)}</td>}<td className="p-4">{result.status === 'completed' && result.repaired_scan_status === 'completed' ? `${result.metrics.findings_before} → ${result.metrics.findings_after}` : `Unavailable (${result.repaired_scan_status})`}</td><td className="p-4">{(result.llm_usage.input_tokens + result.llm_usage.output_tokens).toLocaleString()}</td><td className="p-4">${result.llm_usage.estimated_cost_usd.toFixed(4)}</td><td className="p-4">{(result.llm_usage.latency_ms / 1000).toFixed(2)}s</td><td className="p-4 font-bold text-[#1B3A6B]">{result.status === 'completed' && result.repaired_scan_status === 'completed' ? result.metrics.overall_score.toFixed(1) : 'Unavailable'}</td><td className="p-4">{result.status === 'completed' && result.repaired_scan_status === 'completed' ? result.metrics.efficiency_score.toFixed(2) : 'Unavailable'}</td></tr>)}</tbody></table></div>
+        <div className="overflow-x-auto"><table className="min-w-[850px] w-full text-left text-xs"><thead className="bg-slate-50 font-mono text-[9px] uppercase tracking-wider text-slate-400"><tr><th className="p-4">Strategy</th><th className="p-4">{staticOnly ? 'Functional tests' : 'Tests'}</th>{staticOnly && <th className="p-4">Syntax</th>}<th className="p-4">Findings</th><th className="p-4">Tokens</th><th className="p-4">Cost</th><th className="p-4">Latency</th><th className="p-4">{staticOnly ? UPLOAD_EVIDENCE_COPY.staticOnlyScore : 'Overall'}</th><th className="p-4">Efficiency</th></tr></thead><tbody>{report.strategy_results.map(result => { const canShowStaticScore = !staticOnly || hasReportStaticScoreEvidence(report, result); return <tr key={result.attempt_id} className="border-t border-slate-100"><td className="p-4 font-bold">{STRATEGY_META[result.strategy_id].title}</td><td className="p-4">{staticOnly ? staticTestsLabel(result.repaired_tests.output, result.repaired_tests.status) : result.repaired_tests.status === 'completed' ? `${result.repaired_tests.passed} passed / ${result.repaired_tests.failed} failed` : `Unavailable (${result.repaired_tests.status})`}</td>{staticOnly && <td className="p-4">{syntaxLabel(result.repaired_syntax)}</td>}<td className="p-4">{result.status === 'completed' && result.repaired_scan_status === 'completed' ? `${result.metrics.findings_before} → ${result.metrics.findings_after}` : `Unavailable (${result.repaired_scan_status})`}</td><td className="p-4">{(result.llm_usage.input_tokens + result.llm_usage.output_tokens).toLocaleString()}</td><td className="p-4">${result.llm_usage.estimated_cost_usd.toFixed(4)}</td><td className="p-4">{(result.llm_usage.latency_ms / 1000).toFixed(2)}s</td><td className="p-4 font-bold text-[#1B3A6B]">{canShowStaticScore && result.status === 'completed' && result.repaired_scan_status === 'completed' ? result.metrics.overall_score.toFixed(1) : 'Unavailable'}</td><td className="p-4">{canShowStaticScore && result.status === 'completed' && result.repaired_scan_status === 'completed' ? result.metrics.efficiency_score.toFixed(2) : 'Unavailable'}</td></tr> })}</tbody></table></div>
       </section>
 
       <section className="rounded-xl border border-[#1B3A6B]/20 bg-[#1B3A6B]/5 p-5 sm:p-7">
