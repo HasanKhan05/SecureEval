@@ -14,6 +14,9 @@ class RepairProposal(StrictModel):
     limitations: list[str] = Field(default_factory=list, max_length=20)
 
 
+class GeneratedProgram(StrictModel):
+    code: str = Field(min_length=1, max_length=100_000)
+
 class ExplanationResponse(StrictModel):
     explanation: str = Field(min_length=1, max_length=12_000)
     limitations: list[str] = Field(default_factory=list, max_length=20)
