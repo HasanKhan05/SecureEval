@@ -1,4 +1,5 @@
 from app.enums import StrategyId
+from app.schemas import StrategyMetrics
 from app.scoring import (
     EvidenceSnapshot,
     RankingInput,
@@ -146,3 +147,39 @@ def test_static_scoring_does_not_use_functional_test_evidence() -> None:
     assert metrics.functionality_score is None
     assert metrics.overall_score == metrics.security_score == 100
     assert metrics.efficiency_score == 50
+
+
+def test_best_overall_prefers_fewer_introduced_findings_on_equal_scores() -> None:
+    def metrics(findings_after: int) -> StrategyMetrics:
+        return StrategyMetrics(
+            findings_before=1,
+            findings_after=findings_after,
+            fixed_count=0,
+            security_score=50,
+            functionality_score=100,
+            overall_score=75,
+            efficiency_score=50,
+        )
+
+    ranking = rank_strategies(
+        [
+            RankingInput(
+                "attempt_more",
+                StrategyId.TEST_FEEDBACK,
+                metrics(3),
+                0,
+                0,
+                10,
+            ),
+            RankingInput(
+                "attempt_fewer",
+                StrategyId.SCANNER_FEEDBACK,
+                metrics(2),
+                0,
+                0,
+                10,
+            ),
+        ]
+    )
+
+    assert ranking.best_overall == StrategyId.SCANNER_FEEDBACK

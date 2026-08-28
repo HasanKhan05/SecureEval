@@ -34,7 +34,12 @@ from app.schemas import (
     UploadReceipt,
 )
 from app.uploads.policy import UploadPolicy, UploadPurpose
-from app.uploads.service import accept_upload, read_bounded_upload, reject_upload
+from app.uploads.service import (
+    accept_upload,
+    cleanup_expired_uploads,
+    read_bounded_upload,
+    reject_upload,
+)
 from app.uploads.store import ArtifactStore
 from app.uploads.validation import UploadRejected
 from app.services import (
@@ -120,6 +125,8 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_application: FastAPI):
+        with session_factory() as session:
+            cleanup_expired_uploads(session, artifact_store)
         yield
         engine.dispose()
 
@@ -180,6 +187,7 @@ def create_app(
     ) -> UploadReceipt:
         try:
             payload = await read_bounded_upload(source, upload_policy)
+            cleanup_expired_uploads(session, artifact_store)
             return accept_upload(
                 session,
                 artifact_store,

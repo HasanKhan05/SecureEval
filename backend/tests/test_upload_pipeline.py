@@ -1,4 +1,5 @@
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -308,6 +309,17 @@ def test_completed_upload_report_survives_application_restart(
             json={"strategies": ["scanner_feedback_v1"]},
         ).status_code == 200
         expected = first_client.get(f"/api/v1/runs/{run_id}/report").json()
+        from app.models import RunRecord, UploadArtifactRecord
+
+        with first_client.app.state.session_factory() as session:
+            run = session.get(RunRecord, run_id)
+            upload_id = run.upload_id
+            artifact = session.get(UploadArtifactRecord, upload_id)
+            artifact.expires_at = (
+                datetime.now(UTC) - timedelta(seconds=1)
+            ).isoformat().replace("+00:00", "Z")
+            session.commit()
+        artifact_path = artifact_root / upload_id
 
     with TestClient(
         create_app(database_url=database_url, artifact_root=artifact_root)
@@ -316,6 +328,7 @@ def test_completed_upload_report_survives_application_restart(
 
     assert restored.status_code == 200
     assert restored.json() == expected
+    assert not artifact_path.exists()
 
 
 def test_custom_prompt_backend_dispatch_is_explicitly_unsupported(
@@ -524,3 +537,112 @@ def test_all_failed_upload_repairs_complete_without_winner(
     assert run["status"] == "completed"
     assert run["attempt_summaries"][0]["status"] == "failed"
     assert run["attempt_summaries"][0]["failure_code"] == "repair_unavailable"
+
+
+def test_invalid_repaired_syntax_fails_only_that_run_all_attempt(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app import upload_runner
+    from app.enums import StrategyId
+    from app.llm.contracts import LlmResult, RepairProposal
+
+    real_repair_source = upload_runner.repair_source
+
+    def repair(strategy_id, source, findings, test_result, llm_client):
+        if strategy_id == StrategyId.VULNERABILITY_SPECIFIC:
+            return LlmResult(
+                value=RepairProposal(
+                    repaired_code="def invalid(:\n    pass\n",
+                    summary="Candidate with invalid syntax.",
+                ),
+                source="local_fallback",
+                provider=None,
+                model=None,
+                status="completed",
+                input_tokens=0,
+                output_tokens=0,
+                estimated_cost_usd=0,
+                latency_ms=1,
+                retries=0,
+            )
+        return real_repair_source(
+            strategy_id, source, findings, test_result, llm_client
+        )
+
+    monkeypatch.setattr(upload_runner, "repair_source", repair)
+    run_id = _create_upload_run(client)
+
+    assert client.post(f"/api/v1/runs/{run_id}/start").status_code == 200
+    assert client.post(
+        f"/api/v1/runs/{run_id}/strategies",
+        json={"strategies": ["run_all"]},
+    ).status_code == 200
+    report_response = client.get(f"/api/v1/runs/{run_id}/report")
+
+    assert report_response.status_code == 200
+    report = report_response.json()
+    invalid = report["strategy_results"][0]
+    later = report["strategy_results"][1]
+    assert invalid["strategy_id"] == "vulnerability_specific_v1"
+    assert invalid["status"] == "failed"
+    assert invalid["repaired_syntax"]["status"] == "failed"
+    assert invalid["repaired_syntax"]["valid"] is False
+    assert invalid["repaired_scan_status"] == "unavailable"
+    assert invalid["repaired_findings"] == []
+    assert invalid["metrics"]["findings_after"] == invalid["metrics"]["findings_before"]
+    assert invalid["metrics"]["fixed_count"] == 0
+    assert invalid["metrics"]["security_score"] == 0
+    assert invalid["metrics"]["overall_score"] == 0
+    assert later["strategy_id"] == "scanner_feedback_v1"
+    assert later["status"] == "completed"
+    run = client.get(f"/api/v1/runs/{run_id}").json()
+    assert run["status"] == "completed"
+    assert run["attempt_summaries"][0]["failure_code"] == "invalid_repaired_python_syntax"
+    assert run["attempt_summaries"][1]["status"] == "completed"
+
+
+def test_all_invalid_syntax_repairs_complete_without_winner(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app import upload_runner
+    from app.llm.contracts import LlmResult, RepairProposal
+
+    monkeypatch.setattr(
+        upload_runner,
+        "repair_source",
+        lambda *_args, **_kwargs: LlmResult(
+            value=RepairProposal(
+                repaired_code="def invalid(:\n    pass\n",
+                summary="Candidate with invalid syntax.",
+            ),
+            source="local_fallback",
+            provider=None,
+            model=None,
+            status="completed",
+            input_tokens=0,
+            output_tokens=0,
+            estimated_cost_usd=0,
+            latency_ms=1,
+            retries=0,
+        ),
+    )
+    run_id = _create_upload_run(client)
+
+    assert client.post(f"/api/v1/runs/{run_id}/start").status_code == 200
+    assert client.post(
+        f"/api/v1/runs/{run_id}/strategies",
+        json={"strategies": ["run_all"]},
+    ).status_code == 200
+    report = client.get(f"/api/v1/runs/{run_id}/report").json()
+
+    assert report["status"] == "completed"
+    assert len(report["strategy_results"]) == 3
+    assert all(item["status"] == "failed" for item in report["strategy_results"])
+    assert all(
+        item["repaired_syntax"]["valid"] is False
+        for item in report["strategy_results"]
+    )
+    assert report["best_overall"] is None
+    assert report["best_efficiency"] is None

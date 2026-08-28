@@ -4,7 +4,13 @@ import json
 from pathlib import Path
 
 from app.schemas import Finding
-from app.tools.bandit import ScanResult, _failure, _finding_id
+from app.tools.bandit import (
+    SAFE_PYTHON_ENV,
+    SCANNER_CWD,
+    ScanResult,
+    _failure,
+    _finding_id,
+)
 from app.tools.process import run_command
 
 
@@ -21,10 +27,11 @@ def run_semgrep(source: Path, timeout_seconds: float) -> ScanResult:
             "--json",
             "--quiet",
             "--no-git-ignore",
-            ".",
+            str(source),
         ],
-        source,
+        SCANNER_CWD,
         timeout_seconds,
+        environment=SAFE_PYTHON_ENV,
     )
     if process.status in {"timeout", "unavailable"}:
         return _failure(process)

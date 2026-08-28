@@ -34,12 +34,34 @@ def _failure(process: ProcessResult) -> ScanResult:
     )
 
 
+SCANNER_CWD = Path(__file__).parents[2].resolve()
+SAFE_PYTHON_ENV = {
+    "PYTHONHOME": None,
+    "PYTHONINSPECT": None,
+    "PYTHONNOUSERSITE": "1",
+    "PYTHONPATH": None,
+    "PYTHONSAFEPATH": "1",
+    "PYTHONSTARTUP": None,
+}
+
+
 def run_bandit(source: Path, timeout_seconds: float) -> ScanResult:
     source = source.resolve(strict=True)
     process = run_command(
-        [sys.executable, "-m", "bandit", "-r", ".", "-f", "json", "-q"],
-        source,
+        [
+            sys.executable,
+            "-I",
+            "-m",
+            "bandit",
+            "-r",
+            str(source),
+            "-f",
+            "json",
+            "-q",
+        ],
+        SCANNER_CWD,
         timeout_seconds,
+        environment=SAFE_PYTHON_ENV,
     )
     if process.status in {"timeout", "unavailable"}:
         return _failure(process)

@@ -2,9 +2,11 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from fastapi import UploadFile
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import AuditEventRecord, UploadArtifactRecord
+from app.enums import JobStatus
+from app.models import AuditEventRecord, RunRecord, UploadArtifactRecord
 from app.schemas import UploadReceipt
 from app.uploads.policy import UploadPolicy, UploadPurpose
 from app.uploads.store import ArtifactStore
@@ -31,6 +33,51 @@ def _audit(
             created_at=_timestamp(datetime.now(UTC)),
         )
     )
+
+
+TERMINAL_RUN_STATUSES = {
+    JobStatus.COMPLETED.value,
+    JobStatus.FAILED.value,
+    JobStatus.CANCELLED.value,
+}
+
+
+def cleanup_expired_uploads(
+    session: Session,
+    store: ArtifactStore,
+    *,
+    now: datetime | None = None,
+) -> tuple[str, ...]:
+    current_time = now or datetime.now(UTC)
+    expired = session.scalars(
+        select(UploadArtifactRecord).where(
+            UploadArtifactRecord.deleted_at.is_(None)
+        )
+    ).all()
+    deleted: list[str] = []
+    for artifact in expired:
+        expires_at = datetime.fromisoformat(
+            artifact.expires_at.replace("Z", "+00:00")
+        )
+        if expires_at > current_time:
+            continue
+        if artifact.bound_run_id is not None:
+            run = session.get(RunRecord, artifact.bound_run_id)
+            if run is not None and run.status not in TERMINAL_RUN_STATUSES:
+                continue
+        store.delete(artifact.upload_id)
+        artifact.state = "deleted"
+        artifact.deleted_at = _timestamp(current_time)
+        _audit(
+            session,
+            "upload_expired_deleted",
+            subject_id=artifact.upload_id,
+            reason_code="retention_expired",
+        )
+        deleted.append(artifact.upload_id)
+    if deleted:
+        session.commit()
+    return tuple(deleted)
 
 
 async def read_bounded_upload(source: UploadFile, policy: UploadPolicy) -> bytes:

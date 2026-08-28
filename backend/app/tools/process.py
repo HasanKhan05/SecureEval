@@ -47,12 +47,16 @@ def run_command(
     arguments: list[str],
     cwd: Path,
     timeout_seconds: float,
-    environment: Mapping[str, str] | None = None,
+    environment: Mapping[str, str | None] | None = None,
 ) -> ProcessResult:
     resolved_cwd = cwd.resolve(strict=True)
     process_environment = os.environ.copy()
     if environment:
-        process_environment.update(environment)
+        for name, value in environment.items():
+            if value is None:
+                process_environment.pop(name, None)
+            else:
+                process_environment[name] = value
     started = monotonic()
     try:
         completed = subprocess.run(

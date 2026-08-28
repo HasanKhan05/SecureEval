@@ -321,13 +321,28 @@ def execute_upload_repairs(
                 raise RuntimeError("Repaired source exceeded the bounded size limit.")
             repaired_syntax = validate_python_syntax(repaired_code)
             if not repaired_syntax.valid:
-                fail_run(
-                    session_factory,
-                    run_id,
-                    "invalid_repaired_python_syntax",
-                    _syntax_failure_message(repaired_syntax),
+                results.append(
+                    _failed_repair_result(
+                        attempt_id=attempt_id,
+                        strategy_id=strategy_id,
+                        baseline_findings=baseline_findings,
+                        baseline_scan_status=baseline_scan_status,
+                        baseline_syntax=baseline_syntax,
+                        usage=_llm_usage(repair),
+                        summary=repair.value.summary,
+                        limitation=_syntax_failure_message(repaired_syntax),
+                        repaired_code=repaired_code,
+                        repaired_syntax=repaired_syntax,
+                    )
                 )
-                return
+                if not _mark_attempt_failed(
+                    run_id,
+                    attempt_id,
+                    "invalid_repaired_python_syntax",
+                    session_factory,
+                ):
+                    return
+                continue
             source_file.write_text(repaired_code, encoding="utf-8")
 
             repaired_tests = unavailable_functional_tests()
@@ -492,6 +507,8 @@ def _failed_repair_result(
     usage: LlmUsage,
     summary: str,
     limitation: str,
+    repaired_code: str = "",
+    repaired_syntax: SyntaxValidation | None = None,
 ) -> StrategyResult:
     metrics = score_static_strategy(
         StaticEvidenceSnapshot(
@@ -511,16 +528,19 @@ def _failed_repair_result(
         attempt_id=attempt_id,
         strategy_id=strategy_id,
         status=JobStatus.FAILED,
-        repaired_code="",
+        repaired_code=repaired_code,
         repair_summary=summary,
         limitations=[limitation],
         repaired_findings=[],
         repaired_scan_status="unavailable",
-        repaired_syntax=None,
+        repaired_syntax=repaired_syntax,
         repaired_tests=unavailable_functional_tests(),
         llm_usage=usage,
         review=(
-            "No repair candidate was produced. Uploaded code was not executed or "
+            "The candidate failed syntax validation and was not rescanned. "
+            "Uploaded code was not executed."
+            if repaired_syntax is not None
+            else "No repair candidate was produced. Uploaded code was not executed or "
             "rescanned for this failed attempt."
         ),
         metrics=metrics,

@@ -178,7 +178,7 @@ def rank_strategies(candidates: list[RankingInput]) -> Ranking:
             "latency",
             "attempt_id",
         ],
-        ascending=[False, False, False, True, True, True],
+        ascending=[False, False, True, True, True, True],
         kind="stable",
     ).iloc[0]
     efficiency = frame.sort_values(
