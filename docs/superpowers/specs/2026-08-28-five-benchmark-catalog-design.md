@@ -45,4 +45,3 @@ Each fixture contains `fixture.json`, `source/app.py`, and `tests/test_app.py`. 
 - Hidden evaluator infrastructure.
 - Production benchmark governance or aggregate publication.
 - Executing uploaded or custom-generated source as a controlled benchmark.
-

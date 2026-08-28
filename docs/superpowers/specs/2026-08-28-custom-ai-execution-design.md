@@ -69,4 +69,3 @@ The command runs `python -I -B /workspace/program.py`. Standard output and error
 - Networked generated programs.
 - User-supplied dependencies or package installation.
 - A claim that smoke execution proves functionality or security.
-

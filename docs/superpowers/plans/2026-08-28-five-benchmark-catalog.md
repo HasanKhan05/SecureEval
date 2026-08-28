@@ -189,4 +189,3 @@ Run: `pnpm exec tsc --noEmit && pnpm run verify:responsive && pnpm run verify:re
 git add frontend/src/App.tsx frontend/src/useLiveRun.ts frontend/src/benchmark-catalog.contract-test.ts frontend/scripts/verify-real-benchmark.mjs
 git commit -m "feat: expose five live benchmark tasks"
 ```
-
