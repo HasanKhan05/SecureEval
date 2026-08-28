@@ -130,9 +130,13 @@ def repair_source(
     findings: list[Finding],
     test_result: TestExecution,
     llm_client: LlmClient,
+    *,
+    allow_fallback: bool = True,
 ) -> LlmResult[RepairProposal]:
     if len(source) > 200_000:
-        return _fallback("", "source_too_large")
+        if allow_fallback:
+            return _fallback("", "source_too_large")
+        return llm_client._empty("failed", latency_ms=0, retries=0)
 
     if llm_client.available:
         messages = [
@@ -159,6 +163,8 @@ def repair_source(
         result = llm_client.complete(RepairProposal, messages)
         if result.status == "completed" and result.value is not None:
             return result
-        return _fallback(source, result.status)
+        return _fallback(source, result.status) if allow_fallback else result
 
-    return _fallback(source, "unavailable")
+    if allow_fallback:
+        return _fallback(source, "unavailable")
+    return llm_client._empty("unavailable", latency_ms=0, retries=0)

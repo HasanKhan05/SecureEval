@@ -95,8 +95,8 @@ class UploadReceipt(BaseModel):
     expires_at: datetime
 
 ToolStatus = Literal["completed", "failed", "timeout", "unavailable", "cancelled"]
-EvaluationKind = Literal["benchmark_full", "upload_static"]
-ScoreBasis = Literal["full", "static_only"]
+EvaluationKind = Literal["benchmark_full", "upload_static", "custom_prompt_smoke"]
+ScoreBasis = Literal["full", "static_only", "static_smoke"]
 RunStage = Literal[
     "queued",
     "baseline_testing",
@@ -220,6 +220,7 @@ class RunReport(StrictModel):
     baseline_scan_status: ToolStatus = "completed"
     baseline_syntax: SyntaxValidation | None = None
     baseline_tests: TestExecution
+    generation_usage: LlmUsage | None = None
     strategy_results: list[StrategyResult]
     best_overall: StrategyId | None
     best_efficiency: StrategyId | None

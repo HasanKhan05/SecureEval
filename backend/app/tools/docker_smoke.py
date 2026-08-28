@@ -60,10 +60,20 @@ def run_docker_smoke(
     if result.status == "timeout":
         runner(["docker", "rm", "--force", container_name], root, 10)
 
-    failed = 1 if result.status == "failed" else 0
-    passed = 1 if result.status == "completed" else 0
+    status = result.status
+    unavailable_markers = (
+        "dockerdesktoplinuxengine",
+        "cannot connect to the docker daemon",
+        "is the docker daemon running",
+    )
+    if status == "failed" and any(
+        marker in result.output.lower() for marker in unavailable_markers
+    ):
+        status = "unavailable"
+    failed = 1 if status == "failed" else 0
+    passed = 1 if status == "completed" else 0
     return TestExecution(
-        status=result.status,
+        status=status,
         passed=passed,
         failed=failed,
         skipped=0,

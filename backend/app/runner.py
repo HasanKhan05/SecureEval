@@ -29,6 +29,7 @@ from app.upload_runner import (
     execute_upload_baseline,
     execute_upload_repairs,
 )
+from app.custom_runner import execute_custom_baseline, execute_custom_repairs
 
 
 def execute_baseline(
@@ -319,13 +320,7 @@ def execute_run_baseline(
     if mode == Mode.UPLOAD:
         execute_upload_baseline(run_id, session_factory, dependencies)
         return
-    fail_run(
-        session_factory,
-        run_id,
-        "unsupported_mode",
-        "Custom Prompt mode is not supported by the live backend.",
-    )
-    cleanup_run(dependencies, run_id)
+    execute_custom_baseline(run_id, session_factory, dependencies)
 
 
 def execute_run_repairs(
@@ -342,10 +337,4 @@ def execute_run_repairs(
     if mode == Mode.UPLOAD:
         execute_upload_repairs(run_id, session_factory, dependencies)
         return
-    fail_run(
-        session_factory,
-        run_id,
-        "unsupported_mode",
-        "Custom Prompt mode is not supported by the live backend.",
-    )
-    cleanup_run(dependencies, run_id)
+    execute_custom_repairs(run_id, session_factory, dependencies)

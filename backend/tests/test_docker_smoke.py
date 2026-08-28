@@ -112,3 +112,22 @@ def test_smoke_timeout_forces_named_container_cleanup(tmp_path: Path) -> None:
     assert result.status == "timeout"
     container_name = launches[0][launches[0].index("--name") + 1]
     assert launches[1] == ["docker", "rm", "--force", container_name]
+
+
+def test_stopped_docker_engine_is_reported_as_unavailable(tmp_path: Path) -> None:
+    trusted = (tmp_path / "trusted").resolve()
+    trusted.mkdir()
+    source = trusted / "program.py"
+    source.write_text("print('x')\n", encoding="utf-8")
+
+    def runner(arguments: list[str], cwd: Path, timeout: float) -> ProcessResult:
+        return ProcessResult(
+            "failed", 1, "",
+            "open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified.",
+            3, False,
+        )
+
+    result = run_docker_smoke(source, trusted, 5, runner=runner)
+
+    assert result.status == "unavailable"
+    assert result.failed == 0
