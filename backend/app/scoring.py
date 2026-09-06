@@ -59,34 +59,33 @@ def score_strategy(
     baseline: EvidenceSnapshot,
     repaired: EvidenceSnapshot,
 ) -> StrategyMetrics:
-    tools_completed = (
-        baseline.tests_status == "completed"
-        and repaired.tests_status == "completed"
-        and baseline.scan_status == "completed"
+    scans_completed = (
+        baseline.scan_status == "completed"
         and repaired.scan_status == "completed"
     )
-    if not tools_completed:
-        return StrategyMetrics(
-            findings_before=baseline.findings_count,
-            findings_after=repaired.findings_count,
-            fixed_count=0,
-            security_score=0,
-            functionality_score=0,
-            overall_score=0,
-            efficiency_score=0,
-        )
-
-    fixed_count = max(0, baseline.findings_count - repaired.findings_count)
-    if baseline.findings_count == 0:
-        security = 100 if repaired.findings_count == 0 else 0
+    if scans_completed:
+        fixed_count = max(0, baseline.findings_count - repaired.findings_count)
+        if baseline.findings_count == 0:
+            security = 100 if repaired.findings_count == 0 else 0
+        else:
+            security = 100 * fixed_count / baseline.findings_count
     else:
-        security = 100 * fixed_count / baseline.findings_count
+        fixed_count = 0
+        security = 0.0
 
-    baseline_passed = max(1, baseline.passed)
-    pass_preservation = min(1, repaired.passed / baseline_passed)
-    repaired_total = repaired.passed + repaired.failed
-    failure_rate = repaired.failed / max(1, repaired_total)
-    functionality = 100 * pass_preservation * (1 - failure_rate)
+    tests_completed = (
+        baseline.tests_status == "completed"
+        and repaired.tests_status == "completed"
+    )
+    if tests_completed:
+        baseline_passed = max(1, baseline.passed)
+        pass_preservation = min(1, repaired.passed / baseline_passed)
+        repaired_total = repaired.passed + repaired.failed
+        failure_rate = repaired.failed / max(1, repaired_total)
+        functionality = 100 * pass_preservation * (1 - failure_rate)
+    else:
+        functionality = 0.0
+
     overall = 0.7 * security + 0.3 * functionality
     efficiency = (
         (security / 100)

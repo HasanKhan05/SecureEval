@@ -75,15 +75,57 @@ def test_scores_depend_only_on_recorded_numeric_evidence() -> None:
     assert score_strategy(baseline, repaired) == score_strategy(baseline, repaired)
 
 
-def test_unavailable_tools_never_receive_passing_scores() -> None:
-    baseline = EvidenceSnapshot(1, "completed", 2, 0)
-    unavailable = EvidenceSnapshot(0, "unavailable", 0, 0)
+def test_repaired_tests_crash_preserves_security_score_and_zeros_functionality() -> None:
+    baseline = EvidenceSnapshot(2, "completed", 2, 0, scan_status="completed")
+    repaired_crashed_tests = EvidenceSnapshot(
+        0, "failed", 0, 0, scan_status="completed"
+    )
 
-    metrics = score_strategy(baseline, unavailable)
+    metrics = score_strategy(baseline, repaired_crashed_tests)
 
-    assert metrics.security_score == 0
-    assert metrics.functionality_score == 0
-    assert metrics.overall_score == 0
+    assert metrics.security_score == 100.0
+    assert metrics.functionality_score == 0.0
+    assert metrics.overall_score == 70.0
+    assert metrics.fixed_count == 2
+
+
+def test_unavailable_scanners_never_receive_security_score() -> None:
+    baseline = EvidenceSnapshot(1, "completed", 2, 0, scan_status="completed")
+    unavailable_scans = EvidenceSnapshot(
+        0, "completed", 2, 0, scan_status="unavailable"
+    )
+
+    metrics = score_strategy(baseline, unavailable_scans)
+
+    assert metrics.security_score == 0.0
+    assert metrics.functionality_score == 100.0
+    assert metrics.overall_score == 30.0
+
+
+def test_unavailable_tests_never_receive_functionality_score() -> None:
+    baseline = EvidenceSnapshot(1, "completed", 2, 0, scan_status="completed")
+    unavailable_tests = EvidenceSnapshot(
+        0, "unavailable", 0, 0, scan_status="completed"
+    )
+
+    metrics = score_strategy(baseline, unavailable_tests)
+
+    assert metrics.security_score == 100.0
+    assert metrics.functionality_score == 0.0
+    assert metrics.overall_score == 70.0
+
+
+def test_all_unavailable_tools_never_receive_passing_scores() -> None:
+    baseline = EvidenceSnapshot(1, "completed", 2, 0, scan_status="completed")
+    all_unavailable = EvidenceSnapshot(
+        0, "unavailable", 0, 0, scan_status="unavailable"
+    )
+
+    metrics = score_strategy(baseline, all_unavailable)
+
+    assert metrics.security_score == 0.0
+    assert metrics.functionality_score == 0.0
+    assert metrics.overall_score == 0.0
 
 
 def test_efficiency_uses_the_versioned_cost_floor_formula() -> None:
