@@ -61,7 +61,7 @@ export const BENCHMARK_TASKS = [
   { id: 'T-04', title: 'API Token Configuration', domain: 'config', complexity: 'low', description: 'Read an API token from an injected environment mapping without embedding fallback credentials.', expectedBehavior: 'Returns the configured token and reports missing configuration.' },
   { id: 'T-05', title: 'Password Digest Utility', domain: 'auth', complexity: 'high', description: 'Create and verify salted password digests using a password-oriented derivation function.', expectedBehavior: 'Produces deterministic salted digests and verifies matches without weak hashing.' },
 ] as const satisfies readonly BenchmarkTask[]
-const DEMO_SESSION_KEY = 'secureeval.demo-session.v1'
+export const DEMO_SESSION_KEY = 'secureeval.demo-session.v1'
 
 const defaultDemoSession = (): DemoSession => ({
   screen: 0,
@@ -107,15 +107,38 @@ export function restoreDemoSession(saved: Partial<PersistedDemoSession>): Restor
   return { ...fallback, screen, mode, selectedTaskId, customPrompt, uploadedCode: '', uploadMeta, selectedScans, selectedStrategies, runId, liveRequested }
 }
 
-function loadDemoSession(): DemoSession {
+export function loadDemoSession(storage?: Pick<Storage, 'getItem'>): DemoSession {
   const fallback = defaultDemoSession()
-  if (typeof window === 'undefined') return fallback
+  if (typeof window === 'undefined' && !storage) return fallback
 
   try {
-    const saved = JSON.parse(window.localStorage.getItem(DEMO_SESSION_KEY) || '{}') as Partial<PersistedDemoSession>
+    const store = storage ?? window.sessionStorage
+    const saved = JSON.parse(store.getItem(DEMO_SESSION_KEY) || '{}') as Partial<PersistedDemoSession>
     return restoreDemoSession(saved)
   } catch {
     return fallback
+  }
+}
+
+export function saveDemoSession(session: DemoSession, storage?: Pick<Storage, 'setItem'>): void {
+  if (typeof window === 'undefined' && !storage) return
+
+  try {
+    const store = storage ?? window.sessionStorage
+    store.setItem(DEMO_SESSION_KEY, JSON.stringify(toPersistedDemoSession(session)))
+  } catch {
+    // Private browsing or storage limits must never break the local demo.
+  }
+}
+
+export function clearDemoSession(storage?: Pick<Storage, 'removeItem'>): void {
+  if (typeof window === 'undefined' && !storage) return
+
+  try {
+    const store = storage ?? window.sessionStorage
+    store.removeItem(DEMO_SESSION_KEY)
+  } catch {
+    // Storage access is optional for the local demo.
   }
 }
 
@@ -386,7 +409,7 @@ function TopNav({ screen, mode, onNav }: { screen: number; mode: Mode; onNav: (s
         {screen > 0 && <ModeBadge mode={mode} />}
         <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-mono">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="hidden sm:block">Local demo</span>
+          <span className="hidden sm:block">Local System</span>
         </div>
       </div>
     </header>
@@ -404,7 +427,7 @@ function LandingScreen({ onStart }: { onStart: () => void }) {
         <div className="flex-1 min-w-0">
           <div className="mb-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-[#1B3A6B]/20 bg-[#1B3A6B]/5">
             <span className="w-1.5 h-1.5 rounded-full bg-[#1B3A6B] animate-pulse" />
-            <span className="text-[10px] font-mono text-[#1B3A6B] tracking-widest uppercase">Interactive Local Portfolio Demo</span>
+            <span className="text-[10px] font-mono text-[#1B3A6B] tracking-widest uppercase">Interactive Research Prototype</span>
           </div>
           <h1 className="font-display font-black text-[40px] md:text-[56px] leading-[0.88] tracking-tight text-[#111118] mb-4 uppercase">
             AI Security<br /><span className="text-[#1B3A6B]">Code Repair</span><br />Research Platform
@@ -415,7 +438,7 @@ function LandingScreen({ onStart }: { onStart: () => void }) {
           </p>
           <button onClick={onStart}
             className="inline-flex items-center gap-3 px-7 py-3.5 bg-[#1B3A6B] hover:bg-[#15305A] text-white font-display font-bold uppercase tracking-widest text-sm rounded transition-all hover:scale-[1.02] shadow-sm">
-            Start Demo <span>→</span>
+            Start Evaluation <span>→</span>
           </button>
           <div className="mt-4 flex items-center gap-2">
             <div className="h-px w-5 bg-slate-300" />
@@ -496,8 +519,8 @@ function PromptSelectionScreen({ onBenchmark, onCustom, onUpload }: { onBenchmar
 
   const modeDescs: Record<Mode, string> = {
     benchmark: '◉ Controlled Benchmark Mode — Choose one of five real local evaluation tasks.',
-    custom:    '◈ Demo Prompt Mode — Describe a Python task and follow a deterministic local sample flow.',
-    upload:    '⬡ Demo Code Audit — Load or paste Python code locally to preview the analysis and comparison UI. Code is not executed.',
+    custom:    '◈ Generate & Evaluate — Describe a Python task to generate code, execute smoke tests, and scan for vulnerabilities.',
+    upload:    '⬡ Analyze Your Code — Load or paste Python code locally for static analysis and optional AI repair. Code is not executed.',
   }
   const modeColors: Record<Mode, string> = {
     benchmark: 'text-[#1B3A6B]', custom: 'text-violet-700', upload: 'text-teal-700',
@@ -510,7 +533,7 @@ function PromptSelectionScreen({ onBenchmark, onCustom, onUpload }: { onBenchmar
       return
     }
     if (file.size > 100_000) {
-      setUploadError('For this local demo, choose a Python file smaller than 100 KB.')
+      setUploadError('For this prototype, choose a Python file smaller than 100 KB.')
       return
     }
     const reader = new FileReader()
@@ -834,7 +857,7 @@ function CodeGenerationScreen({ mode, task, customPrompt, uploadedCode, uploadMe
   useEffect(() => {
     if (phase !== 'generating') return
     const iv = setInterval(() => setDots(d => d.length >= 3 ? '' : d + '.'), 400)
-    const t = setTimeout(() => { clearInterval(iv); setPhase('done') }, 3400)
+    const t = setTimeout(() => { clearInterval(iv); setPhase('done') }, 1200)
     return () => { clearInterval(iv); clearTimeout(t) }
   }, [phase])
 
@@ -844,7 +867,7 @@ function CodeGenerationScreen({ mode, task, customPrompt, uploadedCode, uploadMe
     const hasExpected = !!uploadMeta?.expectedBehavior
     const confidence = hasTests && hasExpected ? 'High' : hasTests || hasExpected ? 'Medium' : 'Limited'
     const confidenceColor = confidence === 'High' ? 'text-emerald-700' : confidence === 'Medium' ? 'text-amber-700' : 'text-slate-500'
-    const displayCode = uploadedCode || SAMPLE_CODE
+    const displayCode = uploadedCode || '# No code provided\n'
 
     return (
       <div className="min-h-[calc(100vh-56px)] px-4 md:px-10 py-8 max-w-4xl mx-auto space-y-5">
@@ -919,7 +942,7 @@ function CodeGenerationScreen({ mode, task, customPrompt, uploadedCode, uploadMe
           </div>
           <h2 className="font-display font-black text-xl uppercase tracking-tight">Real AI generation</h2>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">When analysis starts, the local backend sends this prompt to your configured AI provider using a strict code-only response contract. The returned Python is syntax-checked, scanned, and smoke-run only inside restricted Docker.</p>
-          <p className="mt-3 text-[11px] font-mono text-amber-700">Requires SECUREEVAL_LLM_API_KEY and SECUREEVAL_LLM_MODEL. No demo code is substituted if the provider is unavailable.</p>
+          <p className="mt-3 text-[11px] font-mono text-amber-700">Requires OMNIROUTE_API_KEY and NORMAL_ASSISTANT_MODEL. No fallback code is substituted if the provider is unavailable.</p>
           <button onClick={onDone} className="mt-7 inline-flex items-center gap-3 px-7 py-3.5 bg-[#1B3A6B] hover:bg-[#15305A] text-white font-display font-bold uppercase tracking-widest text-sm rounded transition-all hover:scale-[1.02] shadow-sm">
             Configure Security Scan <span>→</span>
           </button>
@@ -954,8 +977,8 @@ function CodeGenerationScreen({ mode, task, customPrompt, uploadedCode, uploadMe
           <div className="w-12 h-12 rounded-xl bg-[#1B3A6B]/8 border border-[#1B3A6B]/15 flex items-center justify-center mx-auto mb-4">
             <span className="text-[#1B3A6B] text-xl">⚡</span>
           </div>
-          <p className="text-slate-500 text-sm mb-1">Ready to generate code</p>
-          <p className="text-slate-400 text-xs font-mono mb-7">Local deterministic demo · no API key</p>
+          <p className="text-slate-500 text-sm mb-1">Ready to prepare benchmark task</p>
+          <p className="text-slate-400 text-xs font-mono mb-7">Controlled evaluation fixture · {task?.id ?? 'Benchmark'}</p>
           <button onClick={() => setPhase('generating')}
             className="inline-flex items-center gap-3 px-7 py-3.5 bg-[#1B3A6B] hover:bg-[#15305A] text-white font-display font-bold uppercase tracking-widest text-sm rounded transition-all hover:scale-[1.02] shadow-sm">
             Generate Code
@@ -971,8 +994,8 @@ function CodeGenerationScreen({ mode, task, customPrompt, uploadedCode, uploadMe
                 style={{ animation: `bounce-stagger 1.2s ease-in-out ${i * 0.16}s infinite` }} />
             ))}
           </div>
-          <p className="font-mono text-sm text-[#1B3A6B]">Generating sample code{dots}</p>
-          <p className="text-slate-400 text-[11px] font-mono mt-1">Local deterministic demo · no API key</p>
+          <p className="font-mono text-sm text-[#1B3A6B]">Preparing benchmark task {task?.id ?? ''}{dots}</p>
+          <p className="text-slate-400 text-[11px] font-mono mt-1">Controlled local fixture</p>
         </div>
       )}
 
@@ -980,14 +1003,28 @@ function CodeGenerationScreen({ mode, task, customPrompt, uploadedCode, uploadMe
         <div className="animate-fade-in-up space-y-4">
           <div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
             <span className="text-emerald-600">✓</span>
-            <span className="font-mono text-sm text-emerald-700">Code generated successfully</span>
-            <span className="ml-auto text-[10px] font-mono text-slate-400">{GENERATION_USAGE.latency}s · {GENERATION_USAGE.total.toLocaleString()} tokens</span>
+            <span className="font-mono text-sm text-emerald-700">Benchmark task selected</span>
+            {task && <span className="ml-auto text-[10px] font-mono text-slate-400">{task.id} · {task.domain}</span>}
           </div>
-          <UsageRow label="Sample Usage — Code Generation" input={GENERATION_USAGE.input} output={GENERATION_USAGE.output} total={GENERATION_USAGE.total} cost={GENERATION_USAGE.cost} latency={GENERATION_USAGE.latency} />
-          <CodePanel code={SAMPLE_CODE} title="generated_code.py · Demo Output" highlights={[9, 10, 11, 12, 13]} />
-          <div className="flex items-start gap-3 p-4 rounded-lg border border-amber-200 bg-amber-50">
-            <span className="text-amber-600 mt-0.5">⚠</span>
-            <p className="text-xs text-slate-600 leading-relaxed">Preliminary static check suggests potential security issues on lines 9–13. Configure your security scan in the next step.</p>
+          <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-mono text-[#1B3A6B] uppercase tracking-widest font-bold">Baseline Task Source</span>
+              <span className="text-[10px] font-mono text-slate-400">·</span>
+              <span className="text-[10px] font-mono text-slate-500">{task?.id ?? 'Benchmark'}</span>
+            </div>
+            <p className="text-sm text-slate-700 leading-relaxed font-mono">
+              The selected task source will be loaded when the baseline analysis starts.
+            </p>
+            {task?.expectedBehavior && (
+              <div className="rounded border border-slate-200 bg-slate-50 p-4">
+                <div className="text-[9px] font-mono text-slate-400 uppercase tracking-widest mb-1">Expected Behavior</div>
+                <p className="text-xs font-mono text-slate-600 leading-relaxed">{task.expectedBehavior}</p>
+              </div>
+            )}
+            <div className="flex items-start gap-3 p-3.5 rounded-lg border border-amber-200 bg-amber-50">
+              <span className="text-amber-600 mt-0.5">ℹ</span>
+              <p className="text-xs text-slate-600 leading-relaxed">The benchmark fixture code is evaluated in the next step based on the scan categories you choose.</p>
+            </div>
           </div>
           <button onClick={onDone}
             className="inline-flex items-center gap-3 px-7 py-3.5 bg-[#1B3A6B] hover:bg-[#15305A] text-white font-display font-bold uppercase tracking-widest text-sm rounded transition-all hover:scale-[1.02] shadow-sm">
@@ -1013,7 +1050,7 @@ function ScanSelectionScreen({ mode, onDone, initialSelected }: { mode: Mode; on
     <div className="min-h-[calc(100vh-56px)] px-4 md:px-10 py-8 max-w-5xl mx-auto">
       <h2 className="font-display font-black text-xl md:text-2xl text-[#111118] uppercase tracking-tight mb-1">Configure Security Scan</h2>
       <p className="text-sm text-slate-500 mb-2 max-w-xl leading-relaxed">Select which security categories to scan for. Multiple categories can be active simultaneously — generated code may contain more than one vulnerability type.</p>
-      <p className="text-[11px] font-mono text-slate-400 mb-6">{mode === 'upload' ? 'The local SecureEval backend runs selected static scanners only; uploaded code is never executed.' : 'Demo analysis uses deterministic sample findings modelled after Bandit and Semgrep output.'}</p>
+      <p className="text-[11px] font-mono text-slate-400 mb-6">{mode === 'upload' ? 'The local SecureEval backend runs selected static scanners only; uploaded code is never executed.' : 'Analysis uses real Bandit and Semgrep findings.'}</p>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
         {SCAN_CATEGORIES.map(cat => {
@@ -1912,7 +1949,7 @@ export default function App() {
   const isLiveRun = live.requested
 
   useEffect(() => {
-    const session = toPersistedDemoSession({
+    saveDemoSession({
       screen,
       mode,
       selectedTaskId: selectedTask?.id || null,
@@ -1924,20 +1961,16 @@ export default function App() {
       runId: live.runId,
       liveRequested: live.requested,
     })
-    try {
-      window.localStorage.setItem(DEMO_SESSION_KEY, JSON.stringify(session))
-    } catch {
-      // Private browsing or storage limits must never break the local demo.
-    }
   }, [screen, mode, selectedTask, customPrompt, uploadMeta, selectedScans, selectedStrategies, live.runId, live.requested])
 
-  const handleBenchmark = (task: BenchmarkTask) => { setSelectedTask(task); setCustomPrompt(''); setUploadedCode(''); setUploadMeta(null); setMode('benchmark'); setScreen(2) }
-  const handleCustom = (prompt: string) => { setSelectedTask(null); setCustomPrompt(prompt); setUploadedCode(''); setUploadMeta(null); setMode('custom'); setScreen(2) }
-  const handleUpload = (code: string, meta: UploadMeta) => { setSelectedTask(null); setCustomPrompt(''); setUploadedCode(code); setUploadMeta(meta); setMode('upload'); setScreen(2) }
+  const handleBenchmark = (task: BenchmarkTask) => { live.reset(); setSelectedTask(task); setCustomPrompt(''); setUploadedCode(''); setUploadMeta(null); setMode('benchmark'); setScreen(2) }
+  const handleCustom = (prompt: string) => { live.reset(); setSelectedTask(null); setCustomPrompt(prompt); setUploadedCode(''); setUploadMeta(null); setMode('custom'); setScreen(2) }
+  const handleUpload = (code: string, meta: UploadMeta) => { live.reset(); setSelectedTask(null); setCustomPrompt(''); setUploadedCode(code); setUploadMeta(meta); setMode('upload'); setScreen(2) }
   const restartDemo = () => {
     const fresh = defaultDemoSession()
+    clearDemoSession()
     try {
-      window.localStorage.removeItem(DEMO_SESSION_KEY)
+      window.sessionStorage.removeItem(DEMO_SESSION_KEY)
     } catch {
       // Storage access is optional for the local demo.
     }

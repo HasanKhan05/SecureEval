@@ -36,7 +36,7 @@ class LlmClient:
         model: str,
         input_price_per_million: float = 0,
         output_price_per_million: float = 0,
-        timeout_seconds: float = 30,
+        timeout_seconds: float = 120,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
@@ -49,7 +49,12 @@ class LlmClient:
 
     @property
     def available(self) -> bool:
-        return bool(self.api_key and self.model and self.base_url)
+        return bool(
+            self.api_key
+            and self.api_key != "PASTE_YOUR_KEY_HERE"
+            and self.model
+            and self.base_url
+        )
 
     def complete(
         self,
@@ -67,24 +72,30 @@ class LlmClient:
                     timeout=self.timeout_seconds,
                     transport=self.transport,
                 ) as client:
-                    response = client.post(
-                        f"{self.base_url}/chat/completions",
-                        headers={"Authorization": f"Bearer {self.api_key}"},
-                        json={
-                            "model": self.model,
-                            "messages": messages,
-                            "max_completion_tokens": 4_096,
-                            "response_format": {
-                                "type": "json_schema",
-                                "json_schema": {
-                                    "name": response_type.__name__,
-                                    "strict": True,
-                                    "schema": _portable_json_schema(
-                                        response_type.model_json_schema()
-                                    ),
-                                },
+                    request_payload = {
+                        "model": self.model,
+                        "messages": messages,
+                        "stream": False,
+                        "max_tokens": 4_096,
+                        "response_format": {
+                            "type": "json_schema",
+                            "json_schema": {
+                                "name": response_type.__name__,
+                                "strict": True,
+                                "schema": _portable_json_schema(
+                                    response_type.model_json_schema()
+                                ),
                             },
                         },
+                    }
+
+                    response = client.post(
+                        f"{self.base_url}/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {self.api_key}",
+                            "Accept": "application/json",
+                        },
+                        json=request_payload,
                     )
                     response.raise_for_status()
                     payload = response.json()

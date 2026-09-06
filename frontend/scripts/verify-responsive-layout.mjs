@@ -20,7 +20,10 @@ const baseSession = {
 
 async function openScreen(screen) {
   await page.goto('http://127.0.0.1:4173/', { waitUntil: 'networkidle' })
-  await page.evaluate(session => localStorage.setItem('secureeval.demo-session.v1', JSON.stringify(session)), { ...baseSession, screen })
+  await page.evaluate(session => {
+    sessionStorage.setItem('secureeval.demo-session.v1', JSON.stringify(session))
+    localStorage.setItem('secureeval.demo-session.v1', JSON.stringify(session))
+  }, { ...baseSession, screen })
   await page.reload({ waitUntil: 'networkidle' })
 }
 

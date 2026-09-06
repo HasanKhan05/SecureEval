@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from app.llm.client import LlmClient
 from app.main import create_app
 
 
@@ -14,8 +15,17 @@ def database_url(tmp_path: Path) -> str:
 
 @pytest.fixture
 def client(database_url: str, tmp_path: Path) -> Iterator[TestClient]:
+    unconfigured_llm = LlmClient(
+        base_url="http://localhost:20128/v1",
+        api_key="",
+        model="",
+    )
     with TestClient(
-        create_app(database_url=database_url, artifact_root=tmp_path / "artifacts")
+        create_app(
+            database_url=database_url,
+            artifact_root=tmp_path / "artifacts",
+            llm_client=unconfigured_llm,
+        )
     ) as test_client:
         yield test_client
 

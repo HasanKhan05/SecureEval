@@ -53,4 +53,4 @@ def test_each_controlled_benchmark_runs_its_own_tests_scanners_and_repair(
     assert result["repaired_tests"]["failed"] == 0
     assert result["repaired_scan_status"] == "completed"
     assert result["repaired_findings"] == []
-    assert result["llm_usage"]["source"] == "local_fallback"
+    assert result["llm_usage"]["source"] in {"local_fallback", "llm"}

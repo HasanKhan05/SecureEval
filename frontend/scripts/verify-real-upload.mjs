@@ -138,9 +138,12 @@ async function startUploadAnalysis(page, source) {
 }
 
 async function assertNoStoredSource(page, source, visibleErrorText = '') {
-  const storedValues = await page.evaluate(() => Object.values(localStorage))
+  const storedValues = await page.evaluate(() => [
+    ...Object.values(localStorage),
+    ...Object.values(sessionStorage),
+  ])
   if (storedValues.some(value => value.includes(source))) {
-    throw new Error('Uploaded source was persisted in localStorage.')
+    throw new Error('Uploaded source was persisted in browser storage.')
   }
   const alertText = (await page.getByRole('alert').allTextContents()).join('\n')
   assertNoSourceDisclosure({
@@ -189,7 +192,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1080 } })
 
   await page.goto(APP_URL, { waitUntil: 'networkidle' })
-  await page.evaluate(() => localStorage.clear())
+  await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); })
   await page.reload({ waitUntil: 'networkidle' })
 
   await startUploadAnalysis(page, VALID_SQL_SOURCE)
@@ -248,7 +251,7 @@ try {
   }
   await assertNoStoredSource(page, VALID_SQL_SOURCE)
 
-  await page.evaluate(() => localStorage.clear())
+  await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); })
   await page.goto(APP_URL, { waitUntil: 'networkidle' })
   await startUploadAnalysis(page, INVALID_PYTHON_SOURCE)
   const syntaxError = page.getByText(/Invalid Python syntax at line \d+, column \d+:/)
@@ -263,7 +266,7 @@ try {
     throw new Error('Returning from syntax failure did not allow replacement source.')
   }
 
-  await page.evaluate(() => localStorage.clear())
+  await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); })
   await page.goto(APP_URL, { waitUntil: 'networkidle' })
   let uploadRequestIntercepted = false
   await page.route(`${API_URL}/uploads`, route => {

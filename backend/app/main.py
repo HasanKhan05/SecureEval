@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import uuid4
 
+from dotenv import load_dotenv
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, Path as ApiPath, Request, UploadFile, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -61,6 +62,17 @@ RunId = Annotated[
 ]
 
 
+def load_backend_env() -> None:
+    backend_dir = Path(__file__).resolve().parents[1]
+    backend_env = backend_dir / ".env"
+    root_env = backend_dir.parent / ".env"
+    if backend_env.is_file():
+        load_dotenv(dotenv_path=backend_env, override=False)
+    if root_env.is_file():
+        load_dotenv(dotenv_path=root_env, override=False)
+
+
+load_backend_env()
 
 
 def _session_dependency(request: Request) -> Iterator[Session]:
@@ -75,6 +87,7 @@ def create_app(
     artifact_root: Path | None = None,
     llm_client: LlmClient | None = None,
 ) -> FastAPI:
+    load_backend_env()
     resolved_url = database_url or os.getenv("SECUREEVAL_DATABASE_URL", DEFAULT_DATABASE_URL)
     if allowed_origins is None:
         configured_origins = os.getenv("SECUREEVAL_ALLOWED_ORIGINS")
@@ -95,6 +108,28 @@ def create_app(
     artifact_store = ArtifactStore(resolved_artifact_root)
     upload_policy = UploadPolicy()
 
+    base_url = os.getenv("OMNIROUTE_BASE_URL", "http://localhost:20128/v1")
+    api_key = os.getenv("OMNIROUTE_API_KEY", "")
+    experiment_model = os.getenv("EXPERIMENT_MODEL", "gemini/gemini-3.1-flash-lite")
+    assistant_model = os.getenv("NORMAL_ASSISTANT_MODEL", "auto/best-coding")
+    input_price = float(os.getenv("OMNIROUTE_INPUT_PRICE_PER_MILLION", "0"))
+    output_price = float(os.getenv("OMNIROUTE_OUTPUT_PRICE_PER_MILLION", "0"))
+
+    experiment_client = llm_client or LlmClient(
+        base_url=base_url,
+        api_key=api_key,
+        model=experiment_model,
+        input_price_per_million=input_price,
+        output_price_per_million=output_price,
+    )
+    assistant_client = llm_client or LlmClient(
+        base_url=base_url,
+        api_key=api_key,
+        model=assistant_model,
+        input_price_per_million=input_price,
+        output_price_per_million=output_price,
+    )
+
     runner_dependencies = RunnerDependencies(
         fixtures_root=Path(__file__).parent / "fixtures",
         work_root=Path(
@@ -106,20 +141,9 @@ def create_app(
         tool_timeout_seconds=float(
             os.getenv("SECUREEVAL_TOOL_TIMEOUT_SECONDS", "30")
         ),
-        llm_client=llm_client or LlmClient(
-            base_url=os.getenv(
-                "SECUREEVAL_LLM_BASE_URL",
-                "https://api.openai.com/v1",
-            ),
-            api_key=os.getenv("SECUREEVAL_LLM_API_KEY", ""),
-            model=os.getenv("SECUREEVAL_LLM_MODEL", ""),
-            input_price_per_million=float(
-                os.getenv("SECUREEVAL_LLM_INPUT_PRICE_PER_MILLION", "0")
-            ),
-            output_price_per_million=float(
-                os.getenv("SECUREEVAL_LLM_OUTPUT_PRICE_PER_MILLION", "0")
-            ),
-        ),
+        llm_client=experiment_client,
+        experiment_llm_client=experiment_client,
+        assistant_llm_client=assistant_client,
         artifact_store=artifact_store,
     )
     runner_dependencies.work_root.mkdir(parents=True, exist_ok=True)
@@ -168,6 +192,7 @@ def create_app(
     application.add_exception_handler(RequestValidationError, validation_error_handler)
     application.add_exception_handler(Exception, unexpected_error_handler)
 
+    @application.get("/health", response_model=HealthResponse)
     @application.get("/api/v1/health", response_model=HealthResponse)
     def health() -> HealthResponse:
         return HealthResponse()
@@ -263,3 +288,11 @@ def create_app(
 
 
 app = create_app()
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    host = os.getenv("SECUREEVAL_HOST", os.getenv("HOST", "0.0.0.0"))
+    port = int(os.getenv("SECUREEVAL_PORT", os.getenv("PORT", "8000")))
+    uvicorn.run("app.main:app", host=host, port=port)

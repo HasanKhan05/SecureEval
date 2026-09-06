@@ -257,7 +257,7 @@ def execute_upload_repairs(
                     baseline_source,
                     baseline_findings,
                     baseline_tests,
-                    dependencies.llm_client,
+                    dependencies.assistant_client,
                 )
             except Exception as exc:
                 usage = LlmUsage(

@@ -81,11 +81,21 @@ def execute_custom_baseline(
             prompt = record.custom_prompt or ""
             selected = set(json.loads(record.scan_categories_json))
 
-        generated = generate_program(prompt, dependencies.llm_client)
+        assistant = dependencies.assistant_client
+        generated = generate_program(prompt, assistant)
         if generated.value is None:
+            if not assistant.available:
+                message = (
+                    "LLM client is not configured. Please set OMNIROUTE_API_KEY, "
+                    "NORMAL_ASSISTANT_MODEL, and OMNIROUTE_BASE_URL in backend/.env or your environment."
+                )
+            else:
+                message = f"Code generation did not complete (status: {generated.status})."
             fail_run(
-                session_factory, run_id, f"generation_{generated.status}",
-                f"Code generation did not complete (status: {generated.status}).",
+                session_factory,
+                run_id,
+                f"generation_{generated.status}",
+                message,
             )
             return
         try:
@@ -204,7 +214,7 @@ def execute_custom_repairs(
                 set_stage(session, record, "repairing", extra={"current_strategy": strategy_value})
             repair = repair_source(
                 strategy_id, baseline_source, baseline_findings, baseline_tests,
-                dependencies.llm_client, allow_fallback=False,
+                dependencies.assistant_client, allow_fallback=False,
             )
             usage = _usage(repair)
             if repair.value is None:

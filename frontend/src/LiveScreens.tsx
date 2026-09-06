@@ -20,6 +20,13 @@ export function getLiveEvidenceCopy(evaluationKind: RunReport['evaluation_kind']
   return evaluationKind === 'upload_static' ? UPLOAD_EVIDENCE_COPY : BENCHMARK_EVIDENCE_COPY
 }
 
+export function formatExecutionSource(usage: RunReport['strategy_results'][number]['llm_usage']) {
+  if (usage.source === 'local_fallback') {
+    return 'Local Fallback — No LLM Used'
+  }
+  return usage.model ? `LLM — ${usage.model}` : 'LLM'
+}
+
 type StaticScoreEvidenceInput = {
   baselineSyntax: Pick<NonNullable<RunReport['baseline_syntax']>, 'valid'> | null
   baselineScanStatus: RunReport['baseline_scan_status']
@@ -160,7 +167,32 @@ export function LiveComparisonScreen({ mode, progress, report, strategies, error
               <div key={id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                 <div className="font-display font-black uppercase text-[#111118]">{STRATEGY_META[id].title}</div>
                 <div className="mt-1 font-mono text-[10px] uppercase text-slate-400">{result ? 'Persisted result' : progress?.current_strategy === id ? 'Running now' : 'Queued'}</div>
-                {result && <div className="mt-4 grid grid-cols-2 gap-2 text-xs"><span>{staticOnly ? 'Functional tests' : custom ? 'Smoke check' : 'Tests'}</span><b className="text-right">{staticOnly ? result.repaired_tests.status === 'unavailable' ? result.repaired_tests.output || `Unavailable (${result.repaired_tests.status})` : `Unavailable (${result.repaired_tests.status})` : result.repaired_tests.status === 'completed' ? `${result.repaired_tests.passed} passed` : `Unavailable (${result.repaired_tests.status})`}</b>{staticOnly && <><span>Syntax</span><b className="text-right">{result.repaired_syntax ? result.repaired_syntax.valid ? UPLOAD_EVIDENCE_COPY.syntaxValid : 'Syntax invalid' : 'Syntax unavailable'}</b></>}<span>Findings</span><b className="text-right">{result.status === 'completed' && result.repaired_scan_status === 'completed' ? `${result.metrics.findings_before} → ${result.metrics.findings_after}` : `Unavailable (${result.repaired_scan_status})`}</b><span>{staticOnly ? UPLOAD_EVIDENCE_COPY.staticOnlyScore : 'Overall'}</span><b className="text-right text-[#1B3A6B]">{canShowStaticScore && result.status === 'completed' && result.repaired_scan_status === 'completed' ? result.metrics.overall_score.toFixed(1) : 'Unavailable'}</b><span>Latency</span><b className="text-right">{(result.llm_usage.latency_ms / 1000).toFixed(2)}s</b></div>}
+                {result && (
+                  <>
+                    <div className="mt-2.5">
+                      <span className={`inline-flex items-center rounded border px-2 py-0.5 font-mono text-[10px] font-bold ${
+                        result.llm_usage.source === 'local_fallback'
+                          ? 'border-amber-300 bg-amber-50 text-amber-800'
+                          : 'border-blue-200 bg-blue-50 text-[#1B3A6B]'
+                      }`}>
+                        {formatExecutionSource(result.llm_usage)}
+                      </span>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                      <span>Execution source</span>
+                      <b className="text-right font-mono text-[11px]">{result.llm_usage.source === 'local_fallback' ? 'Local Fallback' : result.llm_usage.model ? `LLM (${result.llm_usage.model})` : 'LLM'}</b>
+                      <span>{staticOnly ? 'Functional tests' : custom ? 'Smoke check' : 'Tests'}</span>
+                      <b className="text-right">{staticOnly ? result.repaired_tests.status === 'unavailable' ? result.repaired_tests.output || `Unavailable (${result.repaired_tests.status})` : `Unavailable (${result.repaired_tests.status})` : result.repaired_tests.status === 'completed' ? `${result.repaired_tests.passed} passed` : `Unavailable (${result.repaired_tests.status})`}</b>
+                      {staticOnly && <><span>Syntax</span><b className="text-right">{result.repaired_syntax ? result.repaired_syntax.valid ? UPLOAD_EVIDENCE_COPY.syntaxValid : 'Syntax invalid' : 'Syntax unavailable'}</b></>}
+                      <span>Findings</span>
+                      <b className="text-right">{result.status === 'completed' && result.repaired_scan_status === 'completed' ? `${result.metrics.findings_before} → ${result.metrics.findings_after}` : `Unavailable (${result.repaired_scan_status})`}</b>
+                      <span>{staticOnly ? UPLOAD_EVIDENCE_COPY.staticOnlyScore : 'Overall'}</span>
+                      <b className="text-right text-[#1B3A6B]">{canShowStaticScore && result.status === 'completed' && result.repaired_scan_status === 'completed' ? result.metrics.overall_score.toFixed(1) : 'Unavailable'}</b>
+                      <span>Latency</span>
+                      <b className="text-right">{(result.llm_usage.latency_ms / 1000).toFixed(2)}s</b>
+                    </div>
+                  </>
+                )}
               </div>
             )
           })}
@@ -217,15 +249,34 @@ export function LiveResultsScreen({ report, onRestart }: { report: RunReport; on
 
       <section className="mb-7 overflow-hidden rounded-xl border border-black/[0.08] bg-white shadow-sm">
         <div className="border-b border-slate-100 p-5 sm:p-7"><h2 className="font-display text-xl font-black uppercase">Repair strategy results</h2></div>
-        <div className="overflow-x-auto"><table className="min-w-[850px] w-full text-left text-xs"><thead className="bg-slate-50 font-mono text-[9px] uppercase tracking-wider text-slate-400"><tr><th className="p-4">Strategy</th><th className="p-4">{staticOnly ? 'Functional tests' : custom ? 'Smoke check' : 'Tests'}</th>{staticOnly && <th className="p-4">Syntax</th>}<th className="p-4">Findings</th><th className="p-4">Tokens</th><th className="p-4">Cost</th><th className="p-4">Latency</th><th className="p-4">{staticOnly ? UPLOAD_EVIDENCE_COPY.staticOnlyScore : 'Overall'}</th><th className="p-4">Efficiency</th></tr></thead><tbody>{report.strategy_results.map(result => { const canShowStaticScore = !staticOnly || hasReportStaticScoreEvidence(report, result); return <tr key={result.attempt_id} className="border-t border-slate-100"><td className="p-4 font-bold">{STRATEGY_META[result.strategy_id].title}</td><td className="p-4">{staticOnly ? staticTestsLabel(result.repaired_tests.output, result.repaired_tests.status) : result.repaired_tests.status === 'completed' ? `${result.repaired_tests.passed} passed / ${result.repaired_tests.failed} failed` : `Unavailable (${result.repaired_tests.status})`}</td>{staticOnly && <td className="p-4">{syntaxLabel(result.repaired_syntax)}</td>}<td className="p-4">{result.status === 'completed' && result.repaired_scan_status === 'completed' ? `${result.metrics.findings_before} → ${result.metrics.findings_after}` : `Unavailable (${result.repaired_scan_status})`}</td><td className="p-4">{(result.llm_usage.input_tokens + result.llm_usage.output_tokens).toLocaleString()}</td><td className="p-4">${result.llm_usage.estimated_cost_usd.toFixed(4)}</td><td className="p-4">{(result.llm_usage.latency_ms / 1000).toFixed(2)}s</td><td className="p-4 font-bold text-[#1B3A6B]">{canShowStaticScore && result.status === 'completed' && result.repaired_scan_status === 'completed' ? result.metrics.overall_score.toFixed(1) : 'Unavailable'}</td><td className="p-4">{canShowStaticScore && result.status === 'completed' && result.repaired_scan_status === 'completed' ? result.metrics.efficiency_score.toFixed(2) : 'Unavailable'}</td></tr> })}</tbody></table></div>
+        <div className="overflow-x-auto"><table className="min-w-[850px] w-full text-left text-xs"><thead className="bg-slate-50 font-mono text-[9px] uppercase tracking-wider text-slate-400"><tr><th className="p-4">Strategy</th><th className="p-4">Execution Source</th><th className="p-4">{staticOnly ? 'Functional tests' : custom ? 'Smoke check' : 'Tests'}</th>{staticOnly && <th className="p-4">Syntax</th>}<th className="p-4">Findings</th><th className="p-4">Tokens</th><th className="p-4">Cost</th><th className="p-4">Latency</th><th className="p-4">{staticOnly ? UPLOAD_EVIDENCE_COPY.staticOnlyScore : 'Overall'}</th><th className="p-4">Efficiency</th></tr></thead><tbody>{report.strategy_results.map(result => { const canShowStaticScore = !staticOnly || hasReportStaticScoreEvidence(report, result); return <tr key={result.attempt_id} className="border-t border-slate-100"><td className="p-4 font-bold">{STRATEGY_META[result.strategy_id].title}</td><td className="p-4 whitespace-nowrap"><span className={`inline-flex items-center rounded border px-2.5 py-1 font-mono text-[10px] font-bold ${result.llm_usage.source === 'local_fallback' ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-blue-200 bg-blue-50 text-[#1B3A6B]'}`}>{formatExecutionSource(result.llm_usage)}</span></td><td className="p-4">{staticOnly ? staticTestsLabel(result.repaired_tests.output, result.repaired_tests.status) : result.repaired_tests.status === 'completed' ? `${result.repaired_tests.passed} passed / ${result.repaired_tests.failed} failed` : `Unavailable (${result.repaired_tests.status})`}</td>{staticOnly && <td className="p-4">{syntaxLabel(result.repaired_syntax)}</td>}<td className="p-4">{result.status === 'completed' && result.repaired_scan_status === 'completed' ? `${result.metrics.findings_before} → ${result.metrics.findings_after}` : `Unavailable (${result.repaired_scan_status})`}</td><td className="p-4">{(result.llm_usage.input_tokens + result.llm_usage.output_tokens).toLocaleString()}</td><td className="p-4">${result.llm_usage.estimated_cost_usd.toFixed(4)}</td><td className="p-4">{(result.llm_usage.latency_ms / 1000).toFixed(2)}s</td><td className="p-4 font-bold text-[#1B3A6B]">{canShowStaticScore && result.status === 'completed' && result.repaired_scan_status === 'completed' ? result.metrics.overall_score.toFixed(1) : 'Unavailable'}</td><td className="p-4">{canShowStaticScore && result.status === 'completed' && result.repaired_scan_status === 'completed' ? result.metrics.efficiency_score.toFixed(2) : 'Unavailable'}</td></tr> })}</tbody></table></div>
       </section>
 
       <section className="rounded-xl border border-[#1B3A6B]/20 bg-[#1B3A6B]/5 p-5 sm:p-7">
         <div className="font-mono text-[9px] uppercase tracking-widest text-[#1B3A6B]">{staticOnly ? 'Persisted static-only result' : custom ? 'Persisted AI + smoke result' : 'Persisted result'} · {report.explanation_source}</div>
-        <h2 className="mt-2 font-display text-xl font-black uppercase">{staticOnly ? staticEvidenceComplete ? 'How this static-only result ranked' : 'Static analysis notes' : 'Why this result won'}</h2>
+        {report.strategy_results.some(r => r.llm_usage.source === 'local_fallback') ? (
+          <div className="mt-3 flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3.5 text-xs text-amber-900">
+            <span className="shrink-0 rounded border border-amber-300 bg-white px-2 py-0.5 font-mono text-[10px] font-bold uppercase text-amber-800">
+              Local Fallback — No LLM Used
+            </span>
+            <p className="leading-relaxed text-amber-800">
+              This benchmark run evaluated deterministic local fallback repairs. Passing tests or zero findings reflect local heuristics rather than an active LLM.
+            </p>
+          </div>
+        ) : report.strategy_results.length > 0 ? (
+          <div className="mt-3 flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3.5 text-xs text-blue-900">
+            <span className="shrink-0 rounded border border-blue-200 bg-white px-2 py-0.5 font-mono text-[10px] font-bold uppercase text-[#1B3A6B]">
+              {report.strategy_results[0]?.llm_usage.model ? `LLM — ${report.strategy_results[0].llm_usage.model}` : 'Live LLM Repair'}
+            </span>
+            <p className="leading-relaxed text-blue-800">
+              Repairs for this run were generated by a live AI model.
+            </p>
+          </div>
+        ) : null}
+        <h2 className="mt-4 font-display text-xl font-black uppercase">{staticOnly ? staticEvidenceComplete ? 'How this static-only result ranked' : 'Static analysis notes' : 'Why this result won'}</h2>
         <p className="mt-3 text-sm leading-relaxed text-slate-700">{report.explanation}</p>
         {report.limitations.length > 0 && <ul className="mt-4 list-disc space-y-1 pl-5 text-xs text-slate-600">{report.limitations.map(item => <li key={item}>{item}</li>)}</ul>}
-        {staticOnly && <p className="mt-4 text-xs font-medium text-slate-700">Static analysis is not a security guarantee.</p>}
+        <p className="mt-4 text-xs font-medium text-slate-700">A clean scan does not prove the code is fully secure.</p>
         <button onClick={onRestart} className="mt-6 rounded bg-[#1B3A6B] px-5 py-2.5 font-display text-xs font-bold uppercase tracking-widest text-white">Start New Evaluation</button>
       </section>
     </Shell>

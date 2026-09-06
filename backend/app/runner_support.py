@@ -22,6 +22,16 @@ class RunnerDependencies:
     tool_timeout_seconds: float
     llm_client: LlmClient
     artifact_store: ArtifactStore
+    experiment_llm_client: LlmClient | None = None
+    assistant_llm_client: LlmClient | None = None
+
+    @property
+    def experiment_client(self) -> LlmClient:
+        return self.experiment_llm_client or self.llm_client
+
+    @property
+    def assistant_client(self) -> LlmClient:
+        return self.assistant_llm_client or self.llm_client
 
 
 def _now() -> str:

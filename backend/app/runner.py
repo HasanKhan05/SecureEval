@@ -159,7 +159,7 @@ def execute_repairs(
                 baseline_source,
                 baseline_findings,
                 baseline_tests,
-                dependencies.llm_client,
+                dependencies.experiment_client,
             )
             if repair.value is None:
                 raise RuntimeError(f"Repair unavailable for {strategy_value}.")

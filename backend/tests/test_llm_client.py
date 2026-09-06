@@ -76,3 +76,39 @@ def test_valid_provider_response_tracks_usage_cost_and_schema() -> None:
     assert result.input_tokens == 100
     assert result.output_tokens == 50
     assert result.estimated_cost_usd == 0.0004
+
+
+def test_openai_compatible_request_format_and_timeout() -> None:
+    content = {
+        "repaired_code": "print('hello')\n",
+        "summary": "Generated a small Python program.",
+        "limitations": [],
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        assert payload["max_tokens"] == 4_096
+        assert payload["stream"] is False
+        assert "reasoning_effort" not in payload
+        assert request.headers["authorization"] == "Bearer test-key"
+        assert request.headers["accept"] == "application/json"
+        assert request.extensions["timeout"]["read"] == 120
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": json.dumps(content)}}],
+                "usage": {"prompt_tokens": 8, "completion_tokens": 9},
+            },
+        )
+
+    client = LlmClient(
+        base_url="https://api.omniroute.example/v1",
+        api_key="test-key",
+        model="omni-model",
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = client.complete(RepairProposal, messages=[])
+
+    assert result.status == "completed"
+
