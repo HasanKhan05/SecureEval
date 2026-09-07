@@ -159,6 +159,40 @@ def execute_upload_baseline(
             record = session.get(RunRecord, run_id)
             if record is None:
                 return
+            if len(findings) == 0:
+                record.attempts.clear()
+                report = build_report(
+                    run_id=run_id,
+                    mode=Mode.UPLOAD,
+                    evaluation_kind="upload_static",
+                    baseline_source=source,
+                    baseline_findings=findings,
+                    baseline_scan_status=scan_status,
+                    baseline_syntax=baseline_syntax,
+                    baseline_tests=baseline_tests,
+                    strategy_results=[],
+                    explanation=(
+                        "No security findings detected. Repair was not run because "
+                        "there were no findings to repair."
+                    ),
+                    explanation_source="local_fallback",
+                    limitations=[
+                        "Uploaded code and tests were not executed.",
+                        "A clean static scan does not prove the code is fully secure.",
+                        "Upload results are exploratory and excluded from benchmark aggregates.",
+                    ],
+                    created_at=datetime.now(UTC),
+                )
+                save_report(
+                    session,
+                    report,
+                    completed_stages=[
+                        "baseline_testing",
+                        "baseline_scanning",
+                        "reporting",
+                    ],
+                )
+                return
             for attempt in record.attempts:
                 attempt.status = JobStatus.QUEUED.value
             set_stage(

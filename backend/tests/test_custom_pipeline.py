@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from app.llm.client import LlmClient
 from app.main import create_app
 from app.schemas import TestExecution
+from app.tools.bandit import ScanResult
 
 
 PROMPT = "Create a Python function that safely looks up a user by name in SQLite."
@@ -37,6 +38,84 @@ def test_custom_prompt_fails_honestly_without_api_configuration(
     assert run["status"] == "failed"
     assert run["failure_code"] == "generation_unavailable"
     assert client.get(f"/api/v1/runs/{run_id}/report").status_code == 404
+
+
+def test_clean_generated_code_skips_repairs_and_persists_report(
+    database_url: str,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    requests: list[dict[str, object]] = []
+
+    def provider(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        requests.append(payload)
+        contract = payload["response_format"]["json_schema"]["name"]
+        assert contract == "GeneratedProgram", "clean generation must not request a repair"
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": json.dumps({
+                    "code": "def add(left, right):\n    return left + right\n",
+                })}}],
+                "usage": {"prompt_tokens": 11, "completion_tokens": 9},
+            },
+        )
+
+    llm = LlmClient(
+        base_url="https://provider.test/v1",
+        api_key="test-key",
+        model="test-model",
+        transport=httpx.MockTransport(provider),
+    )
+    from app import custom_runner
+
+    completed = ScanResult(
+        status="completed",
+        findings=[],
+        output="",
+        output_truncated=False,
+        duration_ms=1,
+    )
+    monkeypatch.setattr(
+        custom_runner,
+        "_scan",
+        lambda *_args, **_kwargs: (completed, completed, "completed", []),
+    )
+    monkeypatch.setattr(
+        custom_runner,
+        "run_docker_smoke",
+        lambda *_args, **_kwargs: TestExecution(
+            status="completed", passed=1, failed=0, skipped=0,
+            duration_ms=4, output="", output_truncated=False,
+        ),
+    )
+
+    with TestClient(
+        create_app(
+            database_url=database_url,
+            artifact_root=tmp_path / "artifacts",
+            llm_client=llm,
+        )
+    ) as client:
+        run_id = _create_custom_run(client)
+        assert client.post(f"/api/v1/runs/{run_id}/start").status_code == 200
+        run = client.get(f"/api/v1/runs/{run_id}").json()
+        report = client.get(f"/api/v1/runs/{run_id}/report").json()
+
+    assert run["status"] == "completed"
+    assert run["attempt_summaries"] == []
+    assert report["baseline_findings"] == []
+    assert report["strategy_results"] == []
+    assert report["best_overall"] is None
+    assert "No security findings detected" in report["explanation"]
+    assert (
+        "Repair was not run because there were no findings to repair."
+        in report["explanation"]
+    )
+    assert [item["response_format"]["json_schema"]["name"] for item in requests] == [
+        "GeneratedProgram"
+    ]
 
 
 def test_custom_prompt_uses_real_provider_contract_and_persists_report(

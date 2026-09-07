@@ -11,6 +11,10 @@ const API_URL = 'http://127.0.0.1:8000/api/v1'
 const APP_URL = 'http://127.0.0.1:8443/'
 const PROMPT = 'Create a Python function that safely looks up a user by username in SQLite.'
 const MARKER = 'provider_generated_lookup'
+const CLEAN_MARKER = 'provider_generated_add'
+const CLEAN_GENERATED = `def ${CLEAN_MARKER}(left, right):
+    return left + right
+`
 const GENERATED = `def ${MARKER}(connection, username):
     query = f"SELECT id FROM users WHERE username = '{username}'"
     return connection.execute(query).fetchone()
@@ -60,6 +64,7 @@ async function stopTree(child) {
 
 let tempRoot, provider, backend, server, browser
 const contracts = []
+let generationCount = 0
 try {
   provider = createServer((request, response) => {
     let body = ''
@@ -68,8 +73,9 @@ try {
       const payload = JSON.parse(body)
       const contract = payload.response_format?.json_schema?.name
       contracts.push(contract)
+      if (contract === 'GeneratedProgram') generationCount += 1
       const content = contract === 'GeneratedProgram'
-        ? { code: GENERATED }
+        ? { code: generationCount === 1 ? CLEAN_GENERATED : GENERATED }
         : { repaired_code: REPAIRED, summary: 'Parameterized the generated SQL query.', limitations: ['Smoke execution is not a trusted test suite.'] }
       response.writeHead(200, { 'content-type': 'application/json' })
       response.end(JSON.stringify({
@@ -106,6 +112,21 @@ try {
   await page.reload({ waitUntil: 'networkidle' })
 
   await page.locator('main').getByRole('button', { name: 'Generate Code', exact: true }).click()
+  await page.getByPlaceholder(/Write a Python API endpoint/).fill(PROMPT)
+  const cleanReportResponse = page.waitForResponse(response => response.request().method() === 'GET'
+    && response.status() === 200 && /\/api\/v1\/runs\/run_[0-9a-f]{32}\/report$/.test(response.url()), { timeout: 90_000 })
+  await page.getByRole('button', { name: /Generate & Scan/ }).click()
+  const cleanReport = await (await cleanReportResponse).json()
+  await page.getByText('Generate & Evaluate Results', { exact: true }).waitFor({ timeout: 90_000 })
+  await page.getByText('No security findings detected', { exact: true }).waitFor()
+  await page.getByText('Repair was not run because there were no findings to repair.', { exact: true }).first().waitFor()
+  await page.getByText(CLEAN_MARKER, { exact: false }).first().waitFor()
+  if (cleanReport.strategy_results.length !== 0 || cleanReport.best_overall !== null) throw new Error('Clean generation fabricated repair results.')
+  if (JSON.stringify(contracts) !== JSON.stringify(['GeneratedProgram'])) throw new Error(`Clean generation invoked repair: ${JSON.stringify(contracts)}`)
+  if (await page.getByTestId('custom-before-after').count()) throw new Error('Clean generation rendered an empty repair comparison.')
+  await page.getByRole('button', { name: 'Start new evaluation', exact: true }).click()
+
+  await page.locator('main').getByRole('button', { name: 'Generate Code', exact: true }).click()
   await page.getByRole('heading', { name: 'Generate code with AI, then inspect its security', exact: true }).waitFor()
   await page.getByTestId('generation-pipeline').waitFor()
   if (await page.getByTestId('generation-pipeline').locator('[data-pipeline-stage]').count() !== 5) throw new Error('Screen 6 pipeline does not show five compact stages.')
@@ -138,13 +159,13 @@ try {
   await page.getByText('Smoke check', { exact: true }).first().waitFor()
   await assertNoOverflow(page, 390, 844)
 
-  const expected = ['GeneratedProgram', 'RepairProposal', 'RepairProposal', 'RepairProposal']
+  const expected = ['GeneratedProgram', 'GeneratedProgram', 'RepairProposal', 'RepairProposal', 'RepairProposal']
   if (JSON.stringify(contracts) !== JSON.stringify(expected)) throw new Error(`Unexpected provider contracts: ${JSON.stringify(contracts)}`)
   await page.reload({ waitUntil: 'networkidle' })
   await page.getByText('Generate & Evaluate Results', { exact: true }).waitFor({ timeout: 15_000 })
   await page.getByText(MARKER, { exact: false }).first().waitFor()
   await assertNoOverflow(page, 1440, 1080)
-  console.log('Real Custom Prompt provider boundary, three repairs, evidence, and refresh persistence verified.')
+  console.log('Clean-generation skip, vulnerable three-repair flow, provider boundary, evidence, and refresh persistence verified.')
 } finally {
   await browser?.close().catch(() => {})
   await server?.close().catch(() => {})

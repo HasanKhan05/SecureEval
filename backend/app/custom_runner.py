@@ -135,6 +135,41 @@ def execute_custom_baseline(
             if run_cancelled(session, run_id):
                 return
             record = session.get(RunRecord, run_id)
+            if len(findings) == 0:
+                record.attempts.clear()
+                report = build_report(
+                    run_id=run_id,
+                    mode=Mode.CUSTOM_PROMPT,
+                    evaluation_kind="custom_prompt_smoke",
+                    baseline_source=generated.value.code,
+                    baseline_findings=findings,
+                    baseline_scan_status=scan_status,
+                    baseline_syntax=syntax,
+                    baseline_tests=smoke,
+                    generation_usage=generation_usage,
+                    strategy_results=[],
+                    explanation=(
+                        "No security findings detected. Repair was not run because "
+                        "there were no findings to repair."
+                    ),
+                    explanation_source="local_fallback",
+                    limitations=[
+                        "Generated-code smoke execution is not a trusted functional test suite.",
+                        "A clean static scan does not prove the code is fully secure.",
+                        "Custom Prompt results are exploratory and excluded from benchmark aggregates.",
+                    ],
+                    created_at=datetime.now(UTC),
+                )
+                save_report(
+                    session,
+                    report,
+                    completed_stages=[
+                        "baseline_testing",
+                        "baseline_scanning",
+                        "reporting",
+                    ],
+                )
+                return
             for attempt in record.attempts:
                 attempt.status = JobStatus.QUEUED.value
             set_stage(
@@ -156,7 +191,9 @@ def execute_custom_baseline(
         with session_factory() as session:
             record = session.get(RunRecord, run_id)
             terminal = record is None or record.status in {
-                JobStatus.FAILED.value, JobStatus.CANCELLED.value,
+                JobStatus.COMPLETED.value,
+                JobStatus.FAILED.value,
+                JobStatus.CANCELLED.value,
             }
         if terminal:
             cleanup_run(dependencies, run_id)

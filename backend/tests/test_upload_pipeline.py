@@ -94,8 +94,9 @@ def test_upload_source_and_pytest_adapter_are_never_executed(
     assert client.post(f"/api/v1/runs/{run_id}/start").status_code == 200
     progress = client.get(f"/api/v1/runs/{run_id}/progress").json()
 
-    assert progress["status"] == "running"
-    assert progress["stage"] == "awaiting_strategy"
+    assert progress["status"] == "completed"
+    assert progress["stage"] == "completed"
+    assert client.get(f"/api/v1/runs/{run_id}").json()["attempt_summaries"] == []
 
 
 def test_static_adapters_receive_only_trusted_materialized_source_directory(
@@ -122,9 +123,23 @@ def test_static_adapters_receive_only_trusted_materialized_source_directory(
                     progress = json.loads(record.progress_json)
                 assert stage == "repaired_scanning"
                 assert "repaired_testing" in progress["completed_stages"]
+            findings = []
+            if source.parent.name == "baseline" and scanner == "bandit":
+                findings = [Finding(
+                    finding_id="test-baseline-finding",
+                    scanner="bandit",
+                    rule_id="B608",
+                    category="injection",
+                    severity="medium",
+                    confidence="medium",
+                    filename="audit.py",
+                    line_start=1,
+                    line_end=1,
+                    message="Possible SQL injection.",
+                )]
             return ScanResult(
                 status="completed",
-                findings=[],
+                findings=findings,
                 output="",
                 output_truncated=False,
                 duration_ms=1,
@@ -228,30 +243,36 @@ def test_incomplete_baseline_scanner_evidence_fails_without_claiming_clean(
     assert not (client.app.state.runner_dependencies.work_root / run_id).exists()
 
 
-def test_upload_categories_filter_findings_and_static_score(
+def test_upload_clean_baseline_skips_repairs_and_persists_report(
     client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from app import upload_runner
+
+    def reject_repair(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("clean upload must not invoke a repair")
+
+    monkeypatch.setattr(upload_runner, "repair_source", reject_repair)
     run_id = _create_upload_run(client, categories=["secrets"])
 
     assert client.post(f"/api/v1/runs/{run_id}/start").status_code == 200
+    run = client.get(f"/api/v1/runs/{run_id}").json()
+    report = client.get(f"/api/v1/runs/{run_id}/report").json()
+
+    assert run["status"] == "completed"
+    assert run["attempt_summaries"] == []
+    assert report["baseline_findings"] == []
+    assert report["strategy_results"] == []
+    assert report["best_overall"] is None
+    assert "No security findings detected" in report["explanation"]
+    assert (
+        "Repair was not run because there were no findings to repair."
+        in report["explanation"]
+    )
     assert client.post(
         f"/api/v1/runs/{run_id}/strategies",
         json={"strategies": ["vulnerability_specific_v1"]},
-    ).status_code == 200
-    report = client.get(f"/api/v1/runs/{run_id}/report").json()
-
-    assert report["baseline_findings"] == []
-    assert report["strategy_results"][0]["repaired_findings"] == []
-    assert report["strategy_results"][0]["metrics"] == {
-        "score_basis": "static_only",
-        "findings_before": 0,
-        "findings_after": 0,
-        "fixed_count": 0,
-        "security_score": 100.0,
-        "functionality_score": None,
-        "overall_score": 100.0,
-        "efficiency_score": 100.0,
-    }
+    ).status_code == 409
 
 
 def test_upload_cancellation_during_analysis_cleans_workspace(

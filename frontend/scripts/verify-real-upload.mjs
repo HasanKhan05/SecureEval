@@ -17,6 +17,9 @@ def find_user(connection: sqlite3.Connection, username: str) -> dict[str, object
         return None
     return {"id": row[0], "username": row[1], "role": row[2]}
 `
+const CLEAN_SOURCE = `def add(left: int, right: int) -> int:
+    return left + right
+`
 const INVALID_PYTHON_SOURCE = 'def broken(:\n    return 1\n'
 const API_URL = 'http://127.0.0.1:8000/api/v1'
 const APP_URL = 'http://127.0.0.1:8443/'
@@ -204,6 +207,29 @@ try {
   await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); })
   await page.reload({ waitUntil: 'networkidle' })
 
+  let strategyRequests = 0
+  page.on('request', request => {
+    if (request.method() === 'POST' && /\/api\/v1\/runs\/run_[0-9a-f]{32}\/strategies$/.test(request.url())) strategyRequests += 1
+  })
+  const cleanReportResponse = page.waitForResponse(response =>
+    response.request().method() === 'GET'
+    && response.status() === 200
+    && /^http:\/\/127\.0\.0\.1:8000\/api\/v1\/runs\/run_[0-9a-f]{32}\/report$/.test(response.url()),
+    { timeout: 60_000 },
+  )
+  await startUploadAnalysis(page, CLEAN_SOURCE)
+  const cleanReport = await (await cleanReportResponse).json()
+  await page.getByText('Analyze Code Results', { exact: true }).waitFor({ timeout: 60_000 })
+  await page.getByText('No security findings detected', { exact: true }).waitFor()
+  await page.getByText('Repair was not run because there were no findings to repair.', { exact: true }).first().waitFor()
+  if (await page.getByTestId('upload-result-state').getAttribute('data-state') !== 'no-repair-needed') throw new Error('Clean upload did not render its no-repair-needed terminal state.')
+  if (cleanReport.strategy_results.length !== 0 || cleanReport.best_overall !== null) throw new Error('Clean upload fabricated repair results.')
+  if (strategyRequests !== 0) throw new Error('Clean upload called the repair-strategy endpoint.')
+  if (await page.getByTestId('upload-before-after').count()) throw new Error('Clean upload rendered an empty repair comparison.')
+  if (await page.getByRole('button', { name: /Repair with AI/ }).count()) throw new Error('Clean upload still offered AI repair.')
+  await assertNoStoredSource(page, CLEAN_SOURCE)
+  await page.getByRole('button', { name: 'Start new evaluation', exact: true }).click()
+
   await startUploadAnalysis(page, VALID_SQL_SOURCE)
   await assertNoStoredSource(page, VALID_SQL_SOURCE)
   await page.getByText('Exploratory upload analysis', { exact: true }).waitFor({ timeout: 30_000 })
@@ -299,7 +325,7 @@ try {
   }
   await assertNoStoredSource(page, VALID_SQL_SOURCE)
 
-  console.log('Real upload workflow, static evidence, refresh persistence, syntax failure, API failure, and localStorage privacy verified.')
+  console.log('Clean-scan skip, vulnerable upload repair, static evidence, refresh persistence, failure states, and storage privacy verified.')
 } finally {
   await cleanup({ browser, server, backend, tempRoot })
 }

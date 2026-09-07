@@ -1973,6 +1973,20 @@ export default function App() {
     })
   }, [screen, mode, selectedTask, customPrompt, uploadMeta, selectedScans, selectedStrategies, live.runId, live.requested])
 
+  useEffect(() => {
+    const report = live.report
+    if (
+      mode !== 'benchmark' &&
+      screen !== 7 &&
+      report?.status === 'completed' &&
+      report.baseline_scan_status === 'completed' &&
+      report.baseline_findings.length === 0 &&
+      report.strategy_results.length === 0
+    ) {
+      setScreen(7)
+    }
+  }, [live.report, mode, screen])
+
   const handleBenchmark = (task: BenchmarkTask) => { live.reset(); setSelectedTask(task); setCustomPrompt(''); setUploadedCode(''); setUploadMeta(null); setMode('benchmark'); setScreen(2) }
   const handleCustom = (prompt: string) => { live.reset(); setSelectedTask(null); setCustomPrompt(prompt); setUploadedCode(''); setUploadMeta(null); setMode('custom'); setScreen(2) }
   const handleUpload = (code: string, meta: UploadMeta) => { live.reset(); setSelectedTask(null); setCustomPrompt(''); setUploadedCode(code); setUploadMeta(meta); setMode('upload'); setScreen(2) }

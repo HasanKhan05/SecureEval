@@ -79,7 +79,12 @@ def _test_record(
     )
 
 
-def save_report(session: Session, report: RunReport) -> None:
+def save_report(
+    session: Session,
+    report: RunReport,
+    *,
+    completed_stages: list[str] | None = None,
+) -> None:
     run = session.get(RunRecord, report.run_id)
     if run is None:
         raise APIError(404, "run_not_found", "Run not found.")
@@ -151,17 +156,19 @@ def save_report(session: Session, report: RunReport) -> None:
     )
     run.status = report.status.value
     run.stage = "completed"
+    if completed_stages is None:
+        completed_stages = [
+            "baseline_testing",
+            "baseline_scanning",
+            "repairing",
+            "repaired_testing",
+            "repaired_scanning",
+            "reviewing",
+            "reporting",
+        ]
     run.progress_json = json.dumps(
         {
-            "completed_stages": [
-                "baseline_testing",
-                "baseline_scanning",
-                "repairing",
-                "repaired_testing",
-                "repaired_scanning",
-                "reviewing",
-                "reporting",
-            ],
+            "completed_stages": completed_stages,
             "current_strategy": None,
         },
         separators=(",", ":"),
