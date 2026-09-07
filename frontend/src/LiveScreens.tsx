@@ -141,7 +141,7 @@ export function LiveAnalysisScreen({ mode, progress, scans, error, terminalMessa
           <button onClick={onBack} className="rounded border border-slate-300 bg-white px-4 py-2.5 font-display text-xs font-bold uppercase tracking-widest text-slate-700">Back</button>
           <div className="flex gap-3">
             {progress && !ready && !terminal && <button onClick={onCancel} className="rounded border border-rose-200 bg-rose-50 px-4 py-2.5 font-display text-xs font-bold uppercase tracking-widest text-rose-700">Cancel</button>}
-            <button disabled={!ready} onClick={onDone} className="rounded bg-[#1B3A6B] px-5 py-2.5 font-display text-xs font-bold uppercase tracking-widest text-white disabled:cursor-not-allowed disabled:opacity-40">Select Repair Strategy</button>
+            <button disabled={!ready} onClick={onDone} className="rounded bg-[#1B3A6B] px-5 py-2.5 font-display text-xs font-bold uppercase tracking-widest text-white disabled:cursor-not-allowed disabled:opacity-40">{staticOnly ? 'Repair with AI' : 'Select Repair Strategy'}</button>
           </div>
         </div>
       </div>

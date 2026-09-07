@@ -113,7 +113,7 @@ async function cleanup({ browser, server, backend, tempRoot }) {
   }
   if (backendStopped && tempRoot) {
     try {
-      await rm(tempRoot, { recursive: true, force: true })
+      await rm(tempRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 250 })
     } catch (error) {
       cleanupError ??= error
     }
@@ -121,20 +121,29 @@ async function cleanup({ browser, server, backend, tempRoot }) {
   if (cleanupError) throw cleanupError
 }
 
+async function assertNoOverflow(page, width, height) {
+  await page.setViewportSize({ width, height })
+  await page.waitForTimeout(150)
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+  if (overflow > 1) throw new Error(`Analyze Code Results overflowed by ${overflow}px at ${width}px.`)
+}
+
 async function openUpload(page, source) {
   await page.goto(APP_URL, { waitUntil: 'networkidle' })
-  await page.getByRole('button', { name: /Start Demo/ }).click()
-  await page.getByRole('button', { name: /Upload Code/ }).click()
-  await page.getByRole('button', { name: /Or Paste Python Code/ }).click()
+  await page.locator('main').getByRole('button', { name: 'Analyze Code', exact: true }).click()
+  await page.getByRole('heading', { name: 'Analyze your own Python code', exact: true }).waitFor()
+  await page.getByText('1. Add your code', { exact: true }).waitFor()
+  await page.getByText('2. What SecureEval does next', { exact: true }).waitFor()
+  await page.getByTestId('analyze-workspace').waitFor()
+  const inputColumns = await page.getByTestId('analyze-workspace').locator(':scope > *').evaluateAll(items => items.map(item => item.getBoundingClientRect().top))
+  if (inputColumns.length !== 2 || Math.abs(inputColumns[0] - inputColumns[1]) > 2) throw new Error('Screen 5 did not render its two-column desktop workspace.')
+  await page.getByRole('button', { name: 'Paste code', exact: true }).click()
   await page.locator('textarea').first().fill(source)
-  await page.getByRole('button', { name: /Start Code Analysis/ }).click()
-  await page.getByRole('button', { name: /Configure Security Scan/ }).click()
-  await page.getByText('Injection', { exact: true }).first().click()
+  await page.getByRole('button', { name: /Scan this code/i }).click()
 }
 
 async function startUploadAnalysis(page, source) {
   await openUpload(page, source)
-  await page.getByRole('button', { name: /Run Security Analysis/ }).click()
 }
 
 async function assertNoStoredSource(page, source, visibleErrorText = '') {
@@ -173,8 +182,8 @@ try {
         SECUREEVAL_DATABASE_URL: `sqlite:///${databasePath}`,
         SECUREEVAL_ARTIFACT_ROOT: artifactRoot,
         SECUREEVAL_WORK_ROOT: workRoot,
-        SECUREEVAL_LLM_API_KEY: '',
-        SECUREEVAL_LLM_MODEL: '',
+        OMNIROUTE_API_KEY: '',
+        NORMAL_ASSISTANT_MODEL: '',
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     },
@@ -199,7 +208,7 @@ try {
   await assertNoStoredSource(page, VALID_SQL_SOURCE)
   await page.getByText('Exploratory upload analysis', { exact: true }).waitFor({ timeout: 30_000 })
   await page.getByText(BASELINE_STATIC_EVIDENCE, { exact: true }).waitFor()
-  await page.getByRole('button', { name: /Select Repair Strategy/ }).click()
+  await page.getByRole('button', { name: /Repair with AI/ }).click()
 
   await page.getByRole('button', { name: /Vulnerability-Specific Repair/ }).click()
   await page.getByRole('button', { name: /Test-Feedback Repair/ }).click()
@@ -209,7 +218,7 @@ try {
     && /^http:\/\/127\.0\.0\.1:8000\/api\/v1\/runs\/run_[0-9a-f]{32}\/report$/.test(response.url()),
     { timeout: 60_000 },
   )
-  await page.getByRole('button', { name: /Run Security Repair \(1\)/ }).click()
+  await page.getByRole('button', { name: /Run 1 Selected/ }).click()
   const initialReport = await (await initialReportResponse).json()
   if (typeof initialReport.run_id !== 'string' || typeof initialReport.best_overall !== 'string') {
     throw new Error('Initial upload report omitted its run ID or winner.')
@@ -219,7 +228,12 @@ try {
   await page.getByText('Syntax valid', { exact: true }).first().waitFor()
   await page.getByRole('button', { name: /View Final Results/ }).click()
 
-  await page.getByText('Exploratory upload analysis', { exact: true }).waitFor()
+  await page.getByText('Analyze Code Results', { exact: true }).waitFor()
+  if (await page.getByTestId('upload-result-state').getAttribute('data-state') !== 'post-repair') throw new Error('Upload result did not render its real post-repair state.')
+  await page.getByTestId('upload-before-after').waitFor()
+  const uploadColumns = await page.getByTestId('upload-before-after').locator(':scope > *').evaluateAll(items => items.map(item => item.getBoundingClientRect().top))
+  if (uploadColumns.length !== 2 || Math.abs(uploadColumns[0] - uploadColumns[1]) > 2) throw new Error('Screen 8 did not render side-by-side desktop evidence.')
+  await page.getByText('Bandit and Semgrep inspect the source without running it.', { exact: true }).waitFor()
   await page.getByText('Syntax valid', { exact: true }).first().waitFor()
   const exactFunctionalResults = page.getByText(FUNCTIONAL_TESTS_UNAVAILABLE, { exact: true })
   if (await exactFunctionalResults.count() < 1) {
@@ -232,6 +246,7 @@ try {
   const winner = await page.getByTestId('best-overall-strategy').textContent()
   if (!winner) throw new Error('Upload results did not show a winner.')
   await assertNoStoredSource(page, VALID_SQL_SOURCE)
+  await assertNoOverflow(page, 390, 844)
 
   const reloadReportResponse = page.waitForResponse(response =>
     response.request().method() === 'GET'
@@ -250,6 +265,7 @@ try {
     throw new Error(`Upload winner did not survive refresh: ${winner} -> ${persistedWinner}`)
   }
   await assertNoStoredSource(page, VALID_SQL_SOURCE)
+  await assertNoOverflow(page, 1440, 1080)
 
   await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); })
   await page.goto(APP_URL, { waitUntil: 'networkidle' })
@@ -258,11 +274,10 @@ try {
   await syntaxError.waitFor({ timeout: 15_000 })
   await assertNoStoredSource(page, INVALID_PYTHON_SOURCE, await syntaxError.textContent() || '')
   await page.getByRole('button', { name: 'Back' }).click()
-  await page.getByRole('button', { name: 'Prompt' }).click()
-  await page.getByRole('button', { name: /Upload Code/ }).click()
-  await page.getByRole('button', { name: /Or Paste Python Code/ }).click()
+  await page.getByRole('heading', { name: 'Analyze your own Python code', exact: true }).waitFor()
+  await page.getByRole('button', { name: 'Paste code', exact: true }).click()
   await page.locator('textarea').first().fill(VALID_SQL_SOURCE)
-  if (!await page.getByRole('button', { name: /Start Code Analysis/ }).isEnabled()) {
+  if (!await page.getByRole('button', { name: /Scan this code/i }).isEnabled()) {
     throw new Error('Returning from syntax failure did not allow replacement source.')
   }
 

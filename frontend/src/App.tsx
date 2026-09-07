@@ -1,8 +1,18 @@
 import { useState, useEffect, useRef } from 'react'
 import type { ScanCategoryId, StrategyId } from './contracts/api-v1'
-import { LiveAnalysisScreen, LiveComparisonScreen, LiveResultsScreen } from './LiveScreens'
-import { SCAN_CATEGORIES, STRATEGY_IDS, STRATEGY_META } from './taxonomy'
+import { SCAN_CATEGORIES, STRATEGY_IDS, STRATEGY_META, SCAN_CATEGORY_IDS } from './taxonomy'
 import { useLiveRun } from './useLiveRun'
+import { Shell } from './components/Shell'
+import type { ShellSection } from './components/Shell'
+import { OverviewScreen } from './screens/OverviewScreen'
+import { BenchmarkTaskSetupScreen } from './screens/BenchmarkTaskSetupScreen'
+import { BaselineAnalysisScreen } from './screens/BaselineAnalysisScreen'
+import { RepairStrategiesScreen } from './screens/RepairStrategiesScreen'
+import { AnalyzeCodeScreen } from './screens/AnalyzeCodeScreen'
+import { GenerateEvaluateScreen } from './screens/GenerateEvaluateScreen'
+import { RepairProgressScreen } from './screens/RepairProgressScreen'
+import { AnalysisProgressScreen } from './screens/AnalysisProgressScreen'
+import { AnalyzeCodeResultsScreen, BenchmarkResultsScreen, GenerateEvaluateResultsScreen } from './screens/ResultScreens'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -12,11 +22,11 @@ type FindingFixture = {
   line: number; tool: string; msg: string
 }
 
-interface UploadMeta {
+export interface UploadMeta {
   fileName: string; expectedBehavior: string; dependencies: string; testFileName: string; hasTests: boolean
 }
 
-interface BenchmarkTask {
+export interface BenchmarkTask {
   id: string; title: string
   description: string; expectedBehavior: string
   domain: string; complexity: 'low' | 'medium' | 'high'
@@ -1982,44 +1992,190 @@ export default function App() {
     setSelectedScans([])
     setSelectedStrategies(fresh.selectedStrategies)
     live.reset()
+    setScreen(0)
+  }
+
+  const navigateSection = (section: ShellSection) => {
+    if (section === 'overview') {
+      restartDemo()
+      return
+    }
+    live.reset()
+    setSelectedTask(null)
+    setCustomPrompt('')
+    setUploadedCode('')
+    setUploadMeta(null)
+    setSelectedScans([])
+    setSelectedStrategies([...STRATEGY_IDS])
+    setMode(section === 'benchmark' ? 'benchmark' : section === 'analyze' ? 'upload' : 'custom')
     setScreen(1)
+  }
+  const activeSection: ShellSection = screen === 0 ? 'overview' : mode === 'benchmark' ? 'benchmark' : mode === 'upload' ? 'analyze' : 'generate'
+
+  if (screen === 0) {
+    return (
+      <Shell active={activeSection} onNavigate={navigateSection}>
+        <OverviewScreen
+          onBenchmark={() => { setMode('benchmark'); setScreen(1) }}
+          onCustom={() => { setMode('custom'); setScreen(1) }}
+          onUpload={() => { setMode('upload'); setScreen(1) }}
+        />
+      </Shell>
+    )
+  }
+
+  if (mode === 'upload' && screen === 1) {
+    return (
+      <Shell active={activeSection} onNavigate={navigateSection}>
+        <AnalyzeCodeScreen
+          onScan={(code, meta) => {
+            const scans = [...SCAN_CATEGORY_IDS]
+            setUploadedCode(code)
+            setUploadMeta(meta)
+            setSelectedScans(scans)
+            void live.startUpload(code, meta.fileName || 'uploaded_code.py', scans)
+            setScreen(4)
+          }}
+        />
+      </Shell>
+    )
+  }
+
+  if (mode === 'custom' && screen === 1) {
+    return (
+      <Shell active={activeSection} onNavigate={navigateSection}>
+        <GenerateEvaluateScreen
+          customPrompt={customPrompt}
+          onPromptChange={setCustomPrompt}
+          onStart={() => {
+            const scans = [...SCAN_CATEGORY_IDS]
+            setSelectedScans(scans)
+            void live.startCustomPrompt(customPrompt.trim(), scans)
+          }}
+          progress={live.progress}
+          report={live.report}
+          error={live.error}
+          terminalMessage={live.terminalMessage}
+          busy={live.busy}
+          onCancel={() => void live.cancel()}
+          onReset={live.reset}
+          onNext={() => setScreen(5)}
+        />
+      </Shell>
+    )
+  }
+
+  if ((mode === 'upload' || mode === 'custom') && screen === 4) {
+    return (
+      <Shell active={activeSection} onNavigate={navigateSection}>
+        <AnalysisProgressScreen
+          mode={mode}
+          progress={live.progress}
+          error={live.error}
+          terminalMessage={live.terminalMessage}
+          onDone={() => setScreen(5)}
+          onBack={() => setScreen(1)}
+          onCancel={() => void live.cancel()}
+        />
+      </Shell>
+    )
+  }
+
+  if (mode === 'benchmark') {
+    if (screen === 1) {
+      return (
+        <Shell active={activeSection} onNavigate={navigateSection}>
+          <BenchmarkTaskSetupScreen
+            onStartBaseline={(task) => {
+              setSelectedTask(task)
+              setSelectedScans([...SCAN_CATEGORY_IDS])
+              void live.startBenchmark(task.id, [...SCAN_CATEGORY_IDS])
+              setScreen(4)
+            }}
+          />
+        </Shell>
+      )
+    }
+    if (screen === 4 && isLiveRun) {
+      return (
+        <Shell active={activeSection} onNavigate={navigateSection}>
+          <BaselineAnalysisScreen
+            progress={live.progress}
+            report={live.report}
+            task={selectedTask}
+            onChooseRepair={() => setScreen(5)}
+          />
+        </Shell>
+      )
+    }
+    if (screen === 5) {
+      return (
+        <Shell active={activeSection} onNavigate={navigateSection}>
+          <RepairStrategiesScreen
+            mode={mode}
+            initialSelected={selectedStrategies}
+            onRunRepairs={(strats) => {
+              setSelectedStrategies(strats)
+              void live.configure(strats)
+              setScreen(6)
+            }}
+          />
+        </Shell>
+      )
+    }
+  }
+
+  if (screen === 5) {
+    return (
+      <Shell active={activeSection} onNavigate={navigateSection}>
+        <RepairStrategiesScreen
+          mode={mode}
+          initialSelected={selectedStrategies}
+          onRunRepairs={(strats) => {
+            setSelectedStrategies(strats)
+            if (isLiveRun) void live.configure(strats)
+            setScreen(6)
+          }}
+        />
+      </Shell>
+    )
+  }
+
+  if (screen === 6) {
+    return (
+      <Shell active={activeSection} onNavigate={navigateSection}>
+        {isLiveRun ? (
+          <RepairProgressScreen mode={mode} progress={live.progress} report={live.report} strategies={selectedStrategies} error={live.error} terminalMessage={live.terminalMessage} onDone={() => setScreen(7)} onCancel={() => void live.cancel()} onBack={() => setScreen(5)} />
+        ) : (
+          <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center px-4 py-16 text-center"><h1 className="font-display text-2xl font-black uppercase text-white">No active repair run</h1><p className="mt-2 text-sm text-[#9CA3AF]">Return to repair selection and start a backend evaluation.</p><button onClick={() => setScreen(5)} className="mt-6 rounded-lg bg-[#FF5A00] px-5 py-2.5 font-display text-xs font-black uppercase tracking-wider text-white">Back to Repair Selection</button></div>
+        )}
+      </Shell>
+    )
+  }
+
+  if (screen === 7) {
+    return (
+      <Shell active={activeSection} onNavigate={navigateSection}>
+        {isLiveRun && live.report ? (
+          mode === 'benchmark'
+            ? <BenchmarkResultsScreen report={live.report} task={selectedTask} onRestart={restartDemo} />
+            : mode === 'upload'
+              ? <AnalyzeCodeResultsScreen report={live.report} onRestart={restartDemo} onRepair={() => setScreen(5)} />
+              : <GenerateEvaluateResultsScreen report={live.report} onRestart={restartDemo} />
+        ) : (
+          <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center px-4 py-16 text-center"><h1 className="font-display text-2xl font-black uppercase text-white">{isLiveRun ? 'Loading persisted report' : 'No persisted report available'}</h1><p className="mt-2 text-sm text-[#9CA3AF]">{isLiveRun ? 'Reconnecting to the local evaluator…' : 'Start a backend evaluation to view real results.'}</p>{live.error && <p role="alert" className="mt-4 text-sm text-red-300">{live.error}</p>}</div>
+        )}
+      </Shell>
+    )
   }
 
   return (
-    <div className="min-h-screen bg-[#F7F5F0] text-[#111118] font-sans">
-      <TopNav screen={screen} mode={mode} onNav={setScreen} />
-      <div className="relative z-10 pt-14">
-        {screen === 0 && <LandingScreen onStart={() => setScreen(1)} />}
-        {screen === 1 && <PromptSelectionScreen onBenchmark={handleBenchmark} onCustom={handleCustom} onUpload={handleUpload} />}
-        {screen === 2 && <CodeGenerationScreen mode={mode} task={selectedTask} customPrompt={customPrompt} uploadedCode={uploadedCode} uploadMeta={uploadMeta} onDone={() => setScreen(3)} />}
-        {screen === 3 && <ScanSelectionScreen mode={mode} initialSelected={selectedScans} onDone={scans => {
-          setSelectedScans(scans)
-          setScreen(4)
-          if (mode === 'benchmark' && selectedTask) {
-            void live.startBenchmark(selectedTask.id, scans)
-          } else if (mode === 'upload') {
-            void live.startUpload(uploadedCode, uploadMeta?.fileName || 'uploaded_code.py', scans)
-          } else {
-            void live.startCustomPrompt(customPrompt, scans)
-          }
-        }} />}
-        {screen === 4 && (isLiveRun
-          ? <LiveAnalysisScreen mode={mode} progress={live.progress} scans={selectedScans} error={live.error} terminalMessage={live.terminalMessage} onDone={() => setScreen(5)} onBack={() => setScreen(3)} onCancel={() => void live.cancel()} />
-          : <AnalysisScreen mode={mode} task={selectedTask} scans={selectedScans} onDone={() => setScreen(5)} onBack={() => setScreen(3)} />)}
-        {screen === 5 && <RepairStrategyScreen initialSelected={selectedStrategies} onSelect={strats => {
-          setSelectedStrategies(strats)
-          setScreen(6)
-          if (isLiveRun) void live.configure(strats)
-        }} />}
-        {screen === 6 && (isLiveRun
-          ? <LiveComparisonScreen mode={mode} progress={live.progress} report={live.report} strategies={selectedStrategies} error={live.error} terminalMessage={live.terminalMessage} onDone={() => setScreen(7)} onCancel={() => void live.cancel()} onBack={() => setScreen(3)} />
-          : <ComparisonScreen mode={mode} strategies={selectedStrategies} onDone={() => setScreen(7)} />)}
-        {screen === 7 && (isLiveRun
-          ? live.report
-            ? <LiveResultsScreen report={live.report} onRestart={restartDemo} />
-            : <main className="mx-auto max-w-4xl px-4 py-16"><div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm"><div className="font-display text-xl font-black uppercase">Loading persisted report</div><p className="mt-2 text-sm text-slate-500">Reconnecting to the local evaluator…</p>{live.error && <p role="alert" className="mt-4 text-sm text-rose-700">{live.error}</p>}</div></main>
-          : <ResultsScreen mode={mode} strategies={selectedStrategies} onRestart={restartDemo} />)}
+    <Shell active={activeSection} onNavigate={navigateSection}>
+      <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center px-4 py-16 text-center">
+        <h1 className="text-2xl font-semibold text-white">This step is no longer part of the current flow</h1>
+        <p className="mt-2 text-sm text-[#9CA3AF]">Use the navigation above to start the selected workflow.</p>
+        <button type="button" onClick={() => setScreen(1)} className="mt-6 rounded-lg bg-[#FF7A1A] px-5 py-2.5 text-xs font-semibold text-white">Return to setup</button>
       </div>
-    </div>
+    </Shell>
   )
 }

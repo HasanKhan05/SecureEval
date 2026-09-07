@@ -189,6 +189,11 @@ class RunProgress(StrictModel):
     stage: RunStage
     completed_stages: list[RunStage]
     current_strategy: StrategyId | None = None
+    baseline_source: str | None = Field(default=None, max_length=200000)
+    baseline_findings: list[Finding] | None = None
+    baseline_tests: TestExecution | None = None
+    baseline_scan_status: ToolStatus | None = None
+    baseline_syntax: SyntaxValidation | None = None
 
 class StrategySelection(StrictModel):
     strategies: list[StrategyId | Literal["run_all"]] = Field(

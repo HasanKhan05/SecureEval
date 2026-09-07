@@ -12,18 +12,19 @@ const baseSession = {
   mode: 'benchmark',
   selectedTaskId: 'T-01',
   customPrompt: '',
-  uploadedCode: '',
   uploadMeta: null,
   selectedScans: ['injection', 'authentication_authorization', 'secrets', 'input_validation', 'dependency_configuration'],
   selectedStrategies: ['vulnerability_specific_v1', 'scanner_feedback_v1', 'test_feedback_v1'],
+  runId: null,
+  liveRequested: false,
 }
 
-async function openScreen(screen) {
+async function openScreen(screen, overrides = {}) {
   await page.goto('http://127.0.0.1:4173/', { waitUntil: 'networkidle' })
   await page.evaluate(session => {
     sessionStorage.setItem('secureeval.demo-session.v1', JSON.stringify(session))
     localStorage.setItem('secureeval.demo-session.v1', JSON.stringify(session))
-  }, { ...baseSession, screen })
+  }, { ...baseSession, ...overrides, screen })
   await page.reload({ waitUntil: 'networkidle' })
 }
 
@@ -31,47 +32,62 @@ async function assertNoDocumentOverflow(label) {
   const dimensions = await page.evaluate(() => ({
     viewport: document.documentElement.clientWidth,
     document: document.documentElement.scrollWidth,
+    legacyLightUi: [...document.querySelectorAll('*')].some(element => typeof element.className === 'string' && element.className.includes('bg-[#F7F5F0]')),
   }))
   if (dimensions.document > dimensions.viewport) {
-    throw new Error(`${label} overflows the mobile viewport: ${dimensions.document}px document > ${dimensions.viewport}px viewport`)
+    throw new Error(`${label} overflows: ${dimensions.document}px document > ${dimensions.viewport}px viewport`)
   }
+  if (dimensions.legacyLightUi) throw new Error(`${label} rendered reachable legacy light UI.`)
+}
+
+async function verify(width, height) {
+  await page.setViewportSize({ width, height })
+  await openScreen(1, { mode: 'upload', selectedTaskId: null })
+  await page.getByRole('heading', { name: 'Analyze your own Python code', exact: true }).waitFor()
+  await assertNoDocumentOverflow(`Analyze Your Code ${width}px`)
+
+  await openScreen(1, {
+    mode: 'custom',
+    selectedTaskId: null,
+    customPrompt: 'Create a Python function that safely parses a JSON document.',
+  })
+  await page.getByRole('heading', { name: 'Generate code with AI, then inspect its security', exact: true }).waitFor()
+  await assertNoDocumentOverflow(`Generate & Evaluate ${width}px`)
+
+  await openScreen(2)
+  await page.getByText('This step is no longer part of the current flow', { exact: true }).waitFor()
+  await assertNoDocumentOverflow(`Retired route 2 ${width}px`)
+
+  await openScreen(3)
+  await page.getByText('This step is no longer part of the current flow', { exact: true }).waitFor()
+  await assertNoDocumentOverflow(`Retired route 3 ${width}px`)
+
+  const liveRun = {
+    runId: `run_${'a'.repeat(32)}`,
+    liveRequested: true,
+    selectedTaskId: null,
+  }
+  await openScreen(4, { ...liveRun, mode: 'upload' })
+  await page.getByRole('heading', { name: 'Analyze Your Code', exact: true }).waitFor()
+  await assertNoDocumentOverflow(`Dark upload analysis route ${width}px`)
+
+  await openScreen(5, { ...liveRun, mode: 'upload' })
+  await page.getByText('Compare three ways to guide the AI repair', { exact: true }).waitFor()
+  await assertNoDocumentOverflow(`Dark upload strategy route ${width}px`)
+
+  await openScreen(6)
+  await page.getByText('No active repair run', { exact: true }).waitFor()
+  await assertNoDocumentOverflow(`Honest repair empty state ${width}px`)
+
+  await openScreen(7)
+  await page.getByText('No persisted report available', { exact: true }).waitFor()
+  await assertNoDocumentOverflow(`Honest results empty state ${width}px`)
 }
 
 try {
-  await openScreen(3)
-  await page.getByText('Configure Security Scan', { exact: true }).waitFor()
-  await assertNoDocumentOverflow('Scan selection')
-
-  await openScreen(6)
-  await page.getByText('Repair Comparison', { exact: true }).waitFor()
-  await assertNoDocumentOverflow('Repair comparison progress')
-  await page.getByRole('button', { name: /View Final Results/ }).waitFor({ timeout: 8_000 })
-  await assertNoDocumentOverflow('Repair comparison results')
-  const usageLabel = page.getByText(/Sample Usage —/).first()
-  const usageCard = usageLabel.locator('xpath=../..')
-  const usageGrid = usageCard.locator('.grid.grid-cols-5')
-  const usageWidths = await usageGrid.evaluate(element => ({
-    grid: element.getBoundingClientRect().width,
-    viewport: element.parentElement?.clientWidth || 0,
-  }))
-  if (usageWidths.grid <= usageWidths.viewport) {
-    throw new Error(`Usage metrics are compressed instead of scrollable: ${usageWidths.grid}px grid <= ${usageWidths.viewport}px viewport`)
-  }
-  const usageScroll = await usageGrid.evaluate(element => {
-    if (!element.parentElement) return 0
-    element.parentElement.scrollLeft = 100
-    return element.parentElement.scrollLeft
-  })
-  if (usageScroll === 0) throw new Error('Usage metrics cannot be scrolled horizontally on mobile')
-
-  await openScreen(7)
-  await page.getByText('Demo analysis complete', { exact: true }).waitFor()
-  await assertNoDocumentOverflow('Results dashboard')
-
-  await page.setViewportSize({ width: 1440, height: 1080 })
-  await page.reload({ waitUntil: 'networkidle' })
-  await assertNoDocumentOverflow('Desktop results dashboard')
-  console.log('Responsive layout verified at 390px and 1440px.')
+  await verify(390, 844)
+  await verify(1440, 1080)
+  console.log('Core dark screens, retired routes, and honest empty states verified at 390px and 1440px.')
 } finally {
   await browser.close()
   await server.close()

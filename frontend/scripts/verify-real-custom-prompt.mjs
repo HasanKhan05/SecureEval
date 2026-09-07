@@ -40,6 +40,13 @@ async function waitForHealth() {
   throw new Error(`Backend did not become healthy.\n${backendLog}`)
 }
 
+async function assertNoOverflow(page, width, height) {
+  await page.setViewportSize({ width, height })
+  await page.waitForTimeout(150)
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+  if (overflow > 1) throw new Error(`Generate & Evaluate Results overflowed by ${overflow}px at ${width}px.`)
+}
+
 async function stopTree(child) {
   if (!child || child.exitCode !== null) return
   if (process.platform === 'win32' && child.pid) {
@@ -82,9 +89,9 @@ try {
       SECUREEVAL_DATABASE_URL: `sqlite:///${databasePath}`,
       SECUREEVAL_ARTIFACT_ROOT: resolve(tempRoot, 'artifacts'),
       SECUREEVAL_WORK_ROOT: resolve(tempRoot, 'runs'),
-      SECUREEVAL_LLM_API_KEY: 'browser-test-key',
-      SECUREEVAL_LLM_MODEL: 'browser-test-model',
-      SECUREEVAL_LLM_BASE_URL: 'http://127.0.0.1:8765/v1',
+      OMNIROUTE_API_KEY: 'browser-test-key',
+      NORMAL_ASSISTANT_MODEL: 'browser-test-model',
+      OMNIROUTE_BASE_URL: 'http://127.0.0.1:8765/v1',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
@@ -95,44 +102,53 @@ try {
   browser = await chromium.launch({ channel: 'msedge', headless: true })
   const page = await browser.newPage({ viewport: { width: 1440, height: 1080 } })
   await page.goto(APP_URL, { waitUntil: 'networkidle' })
-  await page.evaluate(() => localStorage.clear())
+  await page.evaluate(() => { localStorage.clear(); sessionStorage.clear() })
   await page.reload({ waitUntil: 'networkidle' })
 
-  await page.getByRole('button', { name: /Start Demo/ }).click()
-  await page.getByRole('button', { name: /Custom Prompt/ }).click()
-  await page.getByPlaceholder(/Describe the Python application/).fill(PROMPT)
-  await page.getByRole('button', { name: /Generate From Custom Prompt/ }).click()
-  await page.getByText('Real AI generation', { exact: true }).waitFor()
+  await page.locator('main').getByRole('button', { name: 'Generate Code', exact: true }).click()
+  await page.getByRole('heading', { name: 'Generate code with AI, then inspect its security', exact: true }).waitFor()
+  await page.getByTestId('generation-pipeline').waitFor()
+  if (await page.getByTestId('generation-pipeline').locator('[data-pipeline-stage]').count() !== 5) throw new Error('Screen 6 pipeline does not show five compact stages.')
+  await page.getByText('2. Generated code', { exact: true }).waitFor()
+  await page.getByText('3. Security findings', { exact: true }).waitFor()
+  const generatedColumns = await page.getByTestId('generated-workspace').locator(':scope > *').evaluateAll(items => items.map(item => item.getBoundingClientRect().top))
+  if (generatedColumns.length !== 2 || Math.abs(generatedColumns[0] - generatedColumns[1]) > 2) throw new Error('Screen 6 did not render its two-column desktop workspace.')
+  await page.getByPlaceholder(/Write a Python API endpoint/).fill(PROMPT)
+  await page.getByRole('button', { name: /Generate & Scan/ }).click()
+  await page.getByText('Baseline Evaluation Ready', { exact: true }).waitFor({ timeout: 45_000 })
   if (await page.getByText('Demo Output', { exact: false }).count()) throw new Error('Custom Prompt displayed fake generated code.')
-  await page.getByRole('button', { name: /Configure Security Scan/ }).click()
-  await page.getByText('Injection', { exact: true }).first().click()
-  await page.getByRole('button', { name: /Run Security Analysis/ }).click()
-  await page.getByText('Real AI custom analysis', { exact: true }).waitFor({ timeout: 45_000 })
-  await page.getByText(/Generated code, syntax, scanner, and isolated smoke evidence/).waitFor({ timeout: 45_000 })
-  await page.getByRole('button', { name: /Select Repair Strategy/ }).click()
+  await page.getByText('Scanner findings are evidence from configured rules, not proof of exploitability.', { exact: true }).waitFor()
+  await page.getByRole('button', { name: /Repair & Compare/ }).click()
 
   const reportResponse = page.waitForResponse(response => response.request().method() === 'GET'
     && response.status() === 200 && /\/api\/v1\/runs\/run_[0-9a-f]{32}\/report$/.test(response.url()), { timeout: 90_000 })
-  await page.getByRole('button', { name: /Run Security Repair \(3\)/ }).click()
+  await page.getByRole('button', { name: /Run All Repairs/ }).click()
   const report = await (await reportResponse).json()
   if (report.evaluation_kind !== 'custom_prompt_smoke') throw new Error('Wrong Custom Prompt evaluation kind.')
   if (report.generation_usage?.input_tokens !== 31 || report.strategy_results.length !== 3) throw new Error('Provider usage or strategies were not persisted.')
   await page.getByText('Real AI repair comparison', { exact: true }).waitFor()
   await page.getByRole('button', { name: /View Final Results/ }).click()
-  await page.getByText('Persisted real AI analysis', { exact: true }).waitFor()
-  await page.getByText(MARKER, { exact: false }).waitFor()
+  await page.getByText('Generate & Evaluate Results', { exact: true }).waitFor()
+  await page.getByTestId('custom-before-after').waitFor()
+  const customColumns = await page.getByTestId('custom-before-after').locator(':scope > *').evaluateAll(items => items.map(item => item.getBoundingClientRect().top))
+  if (customColumns.length !== 2 || Math.abs(customColumns[0] - customColumns[1]) > 2) throw new Error('Screen 9 did not render side-by-side desktop evidence.')
+  await page.getByText('What the comparison means', { exact: true }).waitFor()
+  await page.getByText('Fewer configured SAST findings are useful evidence, not proof that the program is fully secure.', { exact: true }).waitFor()
+  await page.getByText(MARKER, { exact: false }).first().waitFor()
   await page.getByText('Smoke check', { exact: true }).first().waitFor()
+  await assertNoOverflow(page, 390, 844)
 
   const expected = ['GeneratedProgram', 'RepairProposal', 'RepairProposal', 'RepairProposal']
   if (JSON.stringify(contracts) !== JSON.stringify(expected)) throw new Error(`Unexpected provider contracts: ${JSON.stringify(contracts)}`)
   await page.reload({ waitUntil: 'networkidle' })
-  await page.getByText('Persisted real AI analysis', { exact: true }).waitFor({ timeout: 15_000 })
-  await page.getByText(MARKER, { exact: false }).waitFor()
+  await page.getByText('Generate & Evaluate Results', { exact: true }).waitFor({ timeout: 15_000 })
+  await page.getByText(MARKER, { exact: false }).first().waitFor()
+  await assertNoOverflow(page, 1440, 1080)
   console.log('Real Custom Prompt provider boundary, three repairs, evidence, and refresh persistence verified.')
 } finally {
   await browser?.close().catch(() => {})
   await server?.close().catch(() => {})
   await stopTree(backend).catch(() => {})
   if (provider) await new Promise(done => provider.close(done))
-  if (tempRoot) await rm(tempRoot, { recursive: true, force: true }).catch(() => {})
+  if (tempRoot) await rm(tempRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 250 }).catch(() => {})
 }

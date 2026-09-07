@@ -308,6 +308,11 @@ export interface RunProgress {
   stage: RunStage;
   completed_stages: RunStage[];
   current_strategy: StrategyId | null;
+  baseline_source?: string | null;
+  baseline_findings?: Finding[] | null;
+  baseline_tests?: TestExecution | null;
+  baseline_scan_status?: ToolStatus | null;
+  baseline_syntax?: SyntaxValidation | null;
 }
 
 export interface RunReport {

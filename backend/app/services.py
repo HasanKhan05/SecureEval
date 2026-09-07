@@ -184,12 +184,18 @@ def start_run(session: Session, run_id: str) -> RunResponse:
 def get_progress(session: Session, run_id: str) -> RunProgress:
     record = _load_run(session, run_id)
     progress = json.loads(record.progress_json or "{}")
+    baseline_evidence = progress if record.mode in {Mode.BENCHMARK.value, Mode.UPLOAD.value} else {}
     return RunProgress(
         run_id=record.run_id,
         status=record.status,
         stage=record.stage,
         completed_stages=progress.get("completed_stages", []),
         current_strategy=progress.get("current_strategy"),
+        baseline_source=baseline_evidence.get("baseline_source"),
+        baseline_findings=baseline_evidence.get("baseline_findings"),
+        baseline_tests=baseline_evidence.get("baseline_tests"),
+        baseline_scan_status=baseline_evidence.get("baseline_scan_status"),
+        baseline_syntax=baseline_evidence.get("baseline_syntax"),
     )
 
 
