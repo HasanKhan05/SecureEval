@@ -1,5 +1,19 @@
 import type { BenchmarkTask } from '../App'
-import type { RunProgress, RunReport } from '../contracts/api-v1'
+import type { RunProgress, RunReport, TestExecution } from '../contracts/api-v1'
+
+function testSummary(tests: TestExecution | null) {
+  if (!tests || tests.status === 'unavailable') return { value: 'Not available', detail: 'Pytest evidence unavailable' }
+  if (tests.status !== 'completed') return { value: 'Test execution failed', detail: 'Pytest did not complete' }
+
+  const total = tests.passed + tests.failed
+  const executionError = total === 0 && /\b(error|failed to|traceback|no module named)\b/i.test(tests.output)
+  if (executionError) return { value: 'Test execution failed', detail: 'Pytest did not complete' }
+  if (total === 0) return tests.skipped > 0
+    ? { value: '0 passed', detail: `${tests.skipped} skipped` }
+    : { value: 'Not available', detail: 'No completed tests reported' }
+
+  return { value: `${tests.passed} / ${total} passed`, detail: `${tests.passed} passed · ${tests.failed} failed` }
+}
 
 export function BaselineAnalysisScreen({
   progress,
@@ -19,6 +33,7 @@ export function BaselineAnalysisScreen({
   const scanStatus = report?.baseline_scan_status ?? progress?.baseline_scan_status ?? null
   const banditCount = findings?.filter(finding => finding.scanner === 'bandit').length ?? 0
   const semgrepCount = findings?.filter(finding => finding.scanner === 'semgrep').length ?? 0
+  const testEvidence = testSummary(tests)
 
   return (
     <div className="mx-auto flex w-full max-w-[1440px] flex-1 flex-col px-4 py-8 sm:px-6 lg:px-[72px] lg:py-10">
@@ -42,7 +57,7 @@ export function BaselineAnalysisScreen({
 
       <section className="mt-6 grid gap-3 sm:grid-cols-3">
         <article className="rounded-xl border border-[#2A3038] bg-[#12151A] p-4"><p className="font-mono text-[9px] tracking-[0.14em] text-[#7F8792]">SECURITY FINDINGS</p><p className="mt-3 text-2xl font-semibold text-white">{findings ? findings.length : '—'}</p><p className="mt-1 text-xs text-[#858D98]">Bandit {banditCount} · Semgrep {semgrepCount}</p></article>
-        <article className="rounded-xl border border-[#2A3038] bg-[#12151A] p-4"><p className="font-mono text-[9px] tracking-[0.14em] text-[#7F8792]">FUNCTIONAL TESTS</p><p className="mt-3 text-2xl font-semibold text-white">{tests ? `${tests.passed} / ${tests.passed + tests.failed}` : '—'}</p><p className="mt-1 text-xs text-[#858D98]">{tests ? `${tests.passed} tests passed · ${tests.status}` : 'Waiting for evidence'}</p></article>
+        <article className="rounded-xl border border-[#2A3038] bg-[#12151A] p-4"><p className="font-mono text-[9px] tracking-[0.14em] text-[#7F8792]">FUNCTIONAL TESTS</p><p data-testid="baseline-test-summary" className="mt-3 text-2xl font-semibold text-white">{testEvidence.value}</p><p className="mt-1 text-xs text-[#858D98]">{testEvidence.detail}</p></article>
         <article className="rounded-xl border border-[#2A3038] bg-[#12151A] p-4"><p className="font-mono text-[9px] tracking-[0.14em] text-[#7F8792]">TASK</p><p className="mt-3 text-lg font-semibold text-white">{task?.id ?? '—'}</p><p className="mt-1 truncate text-xs text-[#858D98]">{task?.title ?? 'Task identity unavailable'}</p></article>
       </section>
 

@@ -84,6 +84,15 @@ try {
   await page.getByText('Official Research', { exact: true }).first().waitFor()
   await assertNoOverflow(page, 390, 844)
   await assertNoOverflow(page, 1440, 1080)
+
+  await page.getByText('User Login Service', { exact: true }).first().click()
+  await page.getByRole('button', { name: /Start Baseline Analysis/ }).click()
+  await page.getByRole('button', { name: /Choose Repair Approach/ }).waitFor({ timeout: 30_000 })
+  const t01BaselineTests = await page.getByTestId('baseline-test-summary').textContent()
+  if (t01BaselineTests !== '2 / 2 passed') throw new Error(`T-01 displayed the wrong baseline test count: ${t01BaselineTests}`)
+
+  await page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('button', { name: 'Overview', exact: true }).click()
+  await page.getByRole('button', { name: 'Open Benchmark Lab', exact: true }).click()
   await page.getByText('Document File Reader', { exact: true }).click()
   await page.getByRole('button', { name: /Start Baseline Analysis/ }).click()
   await page.getByRole('button', { name: /Choose Repair Approach/ }).waitFor({ timeout: 30_000 })
@@ -92,7 +101,13 @@ try {
   const baselineSource = await page.getByTestId('baseline-source').textContent()
   if (!baselineSource?.includes('def ')) throw new Error('Screen 3 did not render the real benchmark source.')
   await page.getByText('Semgrep', { exact: true }).first().waitFor()
-  await page.getByText(/tests passed/i).first().waitFor()
+  const persistedSession = await page.evaluate(() => JSON.parse(sessionStorage.getItem('secureeval.demo-session.v1') ?? '{}'))
+  const progressPayload = await (await page.request.get(`${API_URL}/runs/${persistedSession.runId}/progress`)).json()
+  if (progressPayload.baseline_tests?.passed !== 2 || progressPayload.baseline_tests?.failed !== 0) {
+    throw new Error(`Progress API exposed the wrong baseline test counts: ${JSON.stringify(progressPayload.baseline_tests)}`)
+  }
+  const baselineTests = await page.getByTestId('baseline-test-summary').textContent()
+  if (baselineTests !== '2 / 2 passed') throw new Error(`T-02 displayed the wrong baseline test count: ${baselineTests}`)
   await assertNoOverflow(page, 390, 844)
   await assertNoOverflow(page, 1440, 1080)
   await page.getByRole('button', { name: /Choose Repair Approach/ }).click()
@@ -118,6 +133,7 @@ try {
   await page.getByText('Security Score', { exact: true }).first().waitFor()
   await page.getByText('Functionality Score', { exact: true }).first().waitFor()
   await page.getByText('Overall Score', { exact: true }).first().waitFor()
+  await page.getByText(/2 \/ 2 passed → 2 \/ 2 passed/).first().waitFor()
   const winner = await page.getByTestId('best-overall-strategy').textContent()
   if (!winner) throw new Error('Benchmark Results omitted the backend winner.')
 

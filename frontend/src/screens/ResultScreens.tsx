@@ -24,8 +24,21 @@ function syntaxStatus(syntax: RunReport['baseline_syntax']) {
 }
 
 function testCounts(tests: TestExecution, label = 'Tests') {
-  if (tests.status !== 'completed') return tests.output || `Unavailable (${tests.status})`
+  if (tests.status === 'unavailable') return 'Not available'
+  if (tests.status !== 'completed') return 'Test execution failed'
+  const total = tests.passed + tests.failed
+  if (total === 0 && /\b(error|failed to|traceback|no module named)\b/i.test(tests.output)) return 'Test execution failed'
+  if (total === 0 && tests.skipped === 0) return 'Not available'
   return `${label}: ${tests.passed} passed / ${tests.failed} failed / ${tests.skipped} skipped`
+}
+
+function compactTestCount(tests: TestExecution) {
+  if (tests.status === 'unavailable') return 'Not available'
+  if (tests.status !== 'completed') return 'Test execution failed'
+  const total = tests.passed + tests.failed
+  if (total === 0 && /\b(error|failed to|traceback|no module named)\b/i.test(tests.output)) return 'Test execution failed'
+  if (total === 0) return tests.skipped > 0 ? `0 passed · ${tests.skipped} skipped` : 'Not available'
+  return `${tests.passed} / ${total} passed`
 }
 
 function ResultLayout({ children, testId }: { children: ReactNode; testId: string }) {
@@ -80,7 +93,7 @@ export function BenchmarkResultsScreen({ report, task, onRestart }: { report: Ru
   return <ResultLayout testId="benchmark-results">
     <ResultHeader label="Benchmark Results" eyebrow="Official Research" title="Results — what changed after the repair?" description="Read security findings and functional tests together. A good repair should reduce warnings without breaking expected behavior." report={report} />
     <Note title="How to read this page"><p>Scores, findings, tests, model provenance, and ranking below come directly from the persisted backend report for this run.</p></Note>
-    <section className="mt-3 grid gap-3 sm:grid-cols-3"><Metric label="Security findings" value={best ? `${report.baseline_findings.length} → ${best.repaired_findings.length}` : 'Unavailable'} tone="green" /><Metric label="Functional tests" value={best ? `${report.baseline_tests.passed}/${report.baseline_tests.passed + report.baseline_tests.failed} → ${best.repaired_tests.passed}/${best.repaired_tests.passed + best.repaired_tests.failed}` : 'Unavailable'} tone="green" /><Metric label="Overall Score" value={best ? best.metrics.overall_score.toFixed(1) : 'Unavailable'} tone="orange" /></section>
+    <section className="mt-3 grid gap-3 sm:grid-cols-3"><Metric label="Security findings" value={best ? `${report.baseline_findings.length} → ${best.repaired_findings.length}` : 'Unavailable'} tone="green" /><Metric label="Functional tests" value={best ? `${compactTestCount(report.baseline_tests)} → ${compactTestCount(best.repaired_tests)}` : compactTestCount(report.baseline_tests)} tone="green" /><Metric label="Overall Score" value={best ? best.metrics.overall_score.toFixed(1) : 'Unavailable'} tone="orange" /></section>
     <section className="mt-3 flex flex-col gap-3 rounded-xl border border-[#2A3038] bg-[#12151A] px-4 py-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-mono text-[9px] text-[#44D17A]">COMPLETED ATTEMPT</p><p className="mt-1 text-sm font-semibold text-white">{task ? `${task.id} · ${task.title}` : 'Task identity unavailable'} · {best ? strategyName(best.strategy_id) : 'No completed strategy'}</p></div><p className="text-xs font-semibold text-[#FF9A52]">{executionSource(best?.llm_usage)}</p></section>
     <section data-testid="benchmark-before-after" className="mt-3 grid gap-3 lg:grid-cols-2"><CodePanel title="Before repair" subtitle="Original benchmark source" code={report.baseline_source} /><CodePanel title="After repair" subtitle="Best overall repaired source" code={best?.repaired_code ?? ''} /></section>
     <section className="mt-3 grid gap-3 lg:grid-cols-2"><FindingsPanel title="Findings before repair" findings={report.baseline_findings} status={report.baseline_scan_status} /><FindingsPanel title="Findings after repair" findings={best?.repaired_findings ?? []} status={best?.repaired_scan_status ?? 'unavailable'} /></section>
