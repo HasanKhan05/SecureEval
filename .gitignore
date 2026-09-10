@@ -67,3 +67,13 @@ npm-debug.log*
 /docs/phase-0/
 /docs/phase-2/
 /frontend/src/imports/pasted_text/
+
+# Detailed project specifications and AI-assisted documentation
+/API_SPEC.md
+/BENCHMARK_PROTOCOL.md
+/DEPLOYMENT.md
+/LLM_OUTPUT_CONTRACTS.md
+/PRODUCT_SPEC.md
+/REPRODUCIBILITY.md
+/SECURITY_DESIGN.md
+/TESTING_AND_QA.md
