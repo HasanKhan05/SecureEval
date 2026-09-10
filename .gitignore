@@ -20,3 +20,34 @@ data/*.db
 data/*.sqlite*
 backend/data/
 .pytest_tmp/
+
+# Editor and operating-system files
+.DS_Store
+Thumbs.db
+*.swp
+
+# Temporary files and logs
+*.log
+*.tmp
+*.bak
+
+# AI-assisted development files
+/.superpowers/
+/AGENTS.md
+/ANTIGRAVITY_PHASE_HANDOFF_TEMPLATE.md
+/ANTIGRAVITY_REVIEWER_PROMPT.md
+/FIGMA_INPUT_CHECKLIST.md
+/IMPLEMENTATION_PLAN.md
+/MASTER_CODEX_PROMPT.md
+/PHASE_STATUS.md
+/RISK.md
+/SUBAGENT_ROLES.md
+/USER_PROJECT_RUNBOOK.md
+/frontend/AGENTS.md
+/frontend/CLAUDE.md
+
+# Local planning and review artifacts
+/docs/superpowers/
+/docs/phase-0/
+/docs/phase-2/
+/frontend/src/imports/pasted_text/
