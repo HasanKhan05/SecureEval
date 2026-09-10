@@ -346,184 +346,45 @@ This tree shows the main areas only.
 
 ---
 
-## Local Setup
+## Security Verification & Repair Pipeline Architecture
 
-### Prerequisites
+SecureEval combines multi-scanner static analysis with automated LLM code repair, enforcing deterministic verification before and after remediation:
 
-- **Python 3.14**
-- Node.js / npm
-- Bandit
-- Semgrep
-- OmniRoute running locally or at another reachable endpoint
-- Docker Desktop only when using Generate & Evaluate smoke execution
-
-### 1. Clone the Repository
-
-```bash
-git clone https://github.com/HasanKhan05/SecureEval.git
-cd SecureEval
+```mermaid
+flowchart TD
+    InputCode[Input Python Source] --> ASTCheck{AST Syntax Valid?}
+    ASTCheck -->|No| SyntaxFail[Syntax Error Logged]
+    ASTCheck -->|Yes| StaticScan[Static Analysis: Bandit & Semgrep]
+    
+    StaticScan --> ScannerFindings{Findings Detected?}
+    ScannerFindings -->|No| CleanExit[Clean Scan Confirmed]
+    ScannerFindings -->|Yes| RepairRouting[OmniRoute LLM Repair Dispatch]
+    
+    RepairRouting --> StrategySelect{Repair Strategy}
+    StrategySelect --> StratA[Strategy A: Direct Security Prompt]
+    StrategySelect --> StratB[Strategy B: AST-Constrained Prompt]
+    StrategySelect --> StratC[Strategy C: Test-Feedback Iterative Prompt]
+    
+    StratA --> RepairedCode[Candidate Repaired Code]
+    StratB --> RepairedCode
+    StratC --> RepairedCode
+    
+    RepairedCode --> PostScan[Post-Repair Static Analysis]
+    RepairedCode --> SandboxVerify[Isolated Functional Test Verification]
+    
+    PostScan --> ScoringEngine[Scoring & Metric Evaluation]
+    SandboxVerify --> ScoringEngine
+    ScoringEngine --> ResultLedger[(Persisted Artifact & Provenance Record)]
 ```
 
-### 2. Backend Environment
+### Static Analysis Scanner Integration
+- **Bandit Engine:** Traverses the Python Abstract Syntax Tree (AST) to identify common security flaws (e.g., shell injection, insecure cryptographic primitives, unsafe deserialization, insecure temporary files).
+- **Semgrep Pattern Matcher:** Applies semantic pattern-matching rules to catch path-traversal vulnerabilities (`pathlib` vs `os.path`), hardcoded credentials, and missing input sanitization.
 
-On Windows PowerShell:
-
-```powershell
-cd backend
-C:\Users\hasan\AppData\Local\Programs\Python\Python314\python.exe -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -e .
-```
-
-If the virtual environment already exists:
-
-```powershell
-cd backend
-.\.venv\Scripts\Activate.ps1
-```
-
-Verify:
-
-```powershell
-python --version
-python -m pytest --version
-```
-
-### 3. Backend Environment Variables
-
-Create `backend/.env` from the example and provide your own secret values:
-
-```env
-SECUREEVAL_ENV=development
-SECUREEVAL_DATABASE_URL=sqlite:///./data/secureeval.db
-SECUREEVAL_ARTIFACT_ROOT=./data/artifacts
-SECUREEVAL_ALLOWED_ORIGINS=http://localhost:8443,http://127.0.0.1:8443
-SECUREEVAL_SOURCE_REVISION=unavailable_local_checkout
-SECUREEVAL_TOOL_TIMEOUT_SECONDS=60
-
-OMNIROUTE_BASE_URL=http://localhost:20128/v1
-OMNIROUTE_API_KEY=
-NORMAL_ASSISTANT_MODEL=auto/best-coding
-EXPERIMENT_MODEL=gemini/gemini-3.1-flash-lite
-```
-
-Never expose a real OmniRoute key in the frontend or commit it to Git.
-
-### 4. Start OmniRoute
-
-The default local endpoint is:
-
-```text
-http://localhost:20128/v1
-```
-
-If a different reachable OmniRoute deployment is used, update `OMNIROUTE_BASE_URL`.
-
-### 5. Start the Backend
-
-```powershell
-cd backend
-.\.venv\Scripts\Activate.ps1
-python -m app.main
-```
-
-Default backend:
-
-```text
-http://127.0.0.1:8000
-```
-
-Useful endpoints:
-
-```text
-http://127.0.0.1:8000/health
-http://127.0.0.1:8000/api/v1/health
-http://127.0.0.1:8000/docs
-```
-
-A `404` at `/` is normal.
-
-### 6. Start the Frontend
-
-Open a second terminal:
-
-```powershell
-cd frontend
-npm install
-npm run dev
-```
-
-Default frontend:
-
-```text
-http://localhost:8443
-```
-
-### 7. Docker
-
-| Mode | Docker Required? |
-|---|---|
-| Benchmark Lab | No |
-| Analyze Your Code | No |
-| Generate & Evaluate | Yes, for smoke execution |
-
----
-
-## Usage
-
-### Benchmark Lab
-
-1. Open **Benchmark Lab**.
-2. Select one of the five controlled benchmark tasks.
-3. Start baseline analysis.
-4. Review original source, scanner findings, and functional-test evidence.
-5. Select/run one of the three fixed repair strategies.
-6. Review before/after findings, functional behavior, provenance, and scores.
-
-When functional tests execute successfully, the interface reports real counts such as `2 / 2 passed`.
-
-If Pytest crashes or collection fails, the interface reports:
-
-```text
-Test execution failed
-```
-
-rather than displaying a misleading `0 / 0`.
-
-### Analyze Your Code
-
-1. Open **Analyze Code**.
-2. Paste or upload supported Python source.
-3. Run the static scan.
-4. Review Bandit and Semgrep findings.
-5. If findings exist, optionally run AI repair and compare results.
-
-If the initial scan is clean:
-
-- SecureEval goes directly to the final result
-- no repair model call is made
-- no empty before/after comparison is shown
-
-The result still warns that a clean static scan does not prove the source is fully secure.
-
-### Generate & Evaluate
-
-Example prompt:
-
-```text
-Write a Python function called read_user_file(base_directory, filename) that reads and returns the contents of a text file requested by the user. The filename comes directly from user input. Keep the implementation simple and use pathlib.
-```
-
-SecureEval then:
-
-1. generates Python code
-2. validates syntax / AST
-3. performs the smoke check
-4. scans with Bandit and Semgrep
-5. runs repair only when findings exist
-6. produces the final exploratory result
-
-If the generated source has no filtered security findings, the repair stage is skipped.
+### Automated Repair Evaluation Strategies
+1. **Strategy A (Direct Security Prompt):** Emits vulnerability descriptions directly into the model context, prompting for single-pass remediation.
+2. **Strategy B (AST-Constrained Repair):** Restricts the model to modifying only the vulnerable sub-trees, enforcing strict structural preservation.
+3. **Strategy C (Test-Feedback Iterative Repair):** Provides failed functional test traces alongside scanner findings to iteratively repair vulnerabilities without breaking functional invariants.
 
 ---
 
